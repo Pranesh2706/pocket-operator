@@ -1,0 +1,16 @@
+node_modules/
+.env
+*.db
+*.db-wal
+*.db-shm
+backend/data/pocket.db*
+
+# Expo / Android
+mobile/.expo/
+mobile/dist/
+mobile/android/
+mobile/ios/
+*.apk
+*.aab
+*.keystore
+.DS_Store

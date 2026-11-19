@@ -1,0 +1,23 @@
+{
+  "name": "pocket-operator-backend",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Backend for the Pocket Operator sandbox food-ordering assistant (Lynky Tech assessment)",
+  "engines": {
+    "node": ">=22.13"
+  },
+  "scripts": {
+    "start": "node --disable-warning=ExperimentalWarning src/server.js",
+    "dev": "node --disable-warning=ExperimentalWarning --watch src/server.js",
+    "test": "node --disable-warning=ExperimentalWarning --test \"test/**/*.test.js\"",
+    "reset": "node --disable-warning=ExperimentalWarning scripts/admin.js reset",
+    "item": "node --disable-warning=ExperimentalWarning scripts/admin.js item",
+    "catalog": "node --disable-warning=ExperimentalWarning scripts/admin.js list",
+    "trace": "node --disable-warning=ExperimentalWarning scripts/admin.js trace"
+  },
+  "dependencies": {
+    "express": "^5.1.0",
+    "zod": "^4.0.0"
+  }
+}

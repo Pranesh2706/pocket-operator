@@ -1,0 +1,82 @@
+{
+  "schema_version": 1,
+  "currency": "INR",
+  "rules": {
+    "fulfilment": "sandbox_pickup",
+    "tax_and_fees": 0,
+    "quantity_per_order": 1,
+    "budget_inclusive": true,
+    "selection": "cheapest matching available item; break ties by item id"
+  },
+  "restaurants": [
+    {
+      "id": "r1",
+      "name": "Green Bowl (fictional)",
+      "latitude": 11.01,
+      "longitude": 76.95
+    },
+    {
+      "id": "r2",
+      "name": "Lunch Box (fictional)",
+      "latitude": 11.02,
+      "longitude": 76.96
+    }
+  ],
+  "items": [
+    {
+      "id": "m1",
+      "restaurant_id": "r1",
+      "name": "Veg Rice Bowl",
+      "vegetarian": true,
+      "price": 180,
+      "available": true,
+      "description": "Rice and vegetables."
+    },
+    {
+      "id": "m2",
+      "restaurant_id": "r1",
+      "name": "Paneer Wrap",
+      "vegetarian": true,
+      "price": 220,
+      "available": true,
+      "description": "Paneer and vegetables in a wrap."
+    },
+    {
+      "id": "m3",
+      "restaurant_id": "r1",
+      "name": "Veg Mini Meal",
+      "vegetarian": true,
+      "price": 120,
+      "available": false,
+      "description": "A small vegetarian meal."
+    },
+    {
+      "id": "m4",
+      "restaurant_id": "r2",
+      "name": "Veg Lunch Box",
+      "vegetarian": true,
+      "price": 160,
+      "available": true,
+      "description": "Vegetarian lunch."
+    },
+    {
+      "id": "m5",
+      "restaurant_id": "r2",
+      "name": "Chicken Rice Bowl",
+      "vegetarian": false,
+      "price": 190,
+      "available": true,
+      "description": "Chicken with rice."
+    },
+    {
+      "id": "m6",
+      "restaurant_id": "r2",
+      "name": "Premium Veg Meal",
+      "vegetarian": true,
+      "price": 280,
+      "available": true,
+      "description": "A larger vegetarian meal."
+    }
+  ],
+  "note": "All businesses, menu items and pickup orders are fictional. Coordinates are demo map destinations only; do not contact or transact with any real business."
+}

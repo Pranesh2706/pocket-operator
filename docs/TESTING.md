@@ -1,0 +1,53 @@
+# Verification
+
+## Automated backend tests
+
+Run them with `cd backend && npm test` (Node built-in test runner, no API key needed).
+
+The LLM is replaced by scripted fakes, so the tests can check what happens when a model misbehaves.
+
+**Last result: 44 tests, 44 passed, 0 failed** (Node 22.23, Linux). [Re-run on your machine and update this line.]
+
+| Area | Tests (file) |
+|---|---|
+| Selection rule | cheapest available veg ≤ Rs 200 = m4 Rs 160; budget is inclusive; price ties broken by item id (`orders.test.js`) |
+| Approval | no order until confirm; cancel → 0 orders, and a cancelled proposal can't be confirmed; confirm without a valid proposal → 404; confirmation must match the exact item and total; a superseded proposal can't be confirmed; another device can't confirm; a deliberately new proposal creates a second order |
+| Freshness (stale proposals) | item made unavailable → 409, next valid option m1 Rs 180 proposed, 0 orders, retry returns the same replacement, then confirming the replacement works; price change within budget → same item re-proposed at the new total; price above budget → alternative; nothing matches → explained, no proposal; price changed then reverted → still confirmable |
+| Duplicate protection | retry after a lost response returns the same order; **25 concurrent HTTP confirms → exactly 1 order**; **4 concurrent OS processes confirming against the same SQLite file → exactly 1 order** |
+| Failures and trust | device-action reports (Maps opened, fallback, failure) never create orders; data persists across reopening the DB; reset restores seed data |
+| Agent (`agent.test.js`) | example flow uses search → prepare with the current tool result; when m4 is unavailable, m1 is proposed; nothing-matches path; invented budget or diet rejected and the model told to ask; follow-up answer ("two hundred") accepted on the next turn; prepare_order refused without a search or for a non-best item; unknown tool, invalid args and malformed JSON rejected; no confirm tool exists; Swiggy request handled without calling the model; LLM failure → retryable state with history not polluted; LLM failure after a proposal keeps the proposal; iteration limit enforced; "directions for my last order" → device action from catalogue coordinates; made-up order id refused; no LLM configured → clear retryable state; request validation |
+| Prompt-injection fixture | a catalogue description containing "IGNORE ALL PREVIOUS INSTRUCTIONS…" (clearly labelled defensive test data) reaches the model only as data, and a model that "obeys" it still cannot create an order |
+| LLM client (`llm-client.test.js`) | the real HTTP client against a fake OpenAI-compatible server: tool-call parsing, the full agent turn, API key sent only as a header and never stored in traces, token accounting, retry on 503, timeout |
+
+Live end-to-end check with the real model: `node scripts/smoke.js` (server must be running).
+Result: **[FILL IN pass/fail + latency]**
+
+## Manual checklist (device)
+
+Device / Android version: **[FILL IN, e.g. Pixel 7, Android 15 / emulator API 35 Google Play image]**
+
+| # | Scenario | Steps | Expected | Result |
+|---|---|---|---|---|
+| 1 | Mic permission denied | Fresh install → hold mic → Deny | Message "Microphone permission was denied. You can still type…"; no crash; typing and Send still work | [ ] |
+| 2 | Permission permanently denied | Deny twice / "Don't ask again" → hold mic | Message with an "Open app settings" link | [ ] |
+| 3 | Permission granted | Hold mic → Allow | "Microphone allowed. Hold the mic button again" → hold again, speak → red "Listening…" bar with live text → release → transcript in the editable box, not sent | [ ] |
+| 4 | Empty recording | Hold mic, stay silent, release | "Empty recording…" / "I didn't hear anything…"; nothing sent | [ ] |
+| 5 | Voice unavailable | Emulator without Google app | "Voice input is not available…"; text works | [ ] |
+| 6 | Example request | Speak or type the brief's example → Send | Card: Lunch Box (fictional), Veg Lunch Box, qty 1, ₹160, SANDBOX label, Confirm/Cancel | [ ] |
+| 7 | Confirm + Maps | Tap Confirm | "SANDBOX ORDER SAVED" chip, then Maps app opens at 11.02, 76.96 → "MAPS OPENED" | [ ] |
+| 8 | Maps fallback | Device/emulator with no Maps app (or disable Google Maps) → "Open directions for my last order" | Browser opens google.com/maps → "BROWSER FALLBACK OPENED"; no new order in History | [ ] |
+| 9 | Could not open directions | No Maps and no browser (e.g. both disabled in a test profile) | "COULD NOT OPEN DIRECTIONS"; no crash; no new order | [ ] |
+| 10 | Changed availability | Prepare; run `npm run item -- m4 --available false`; tap Confirm | Message that it's unavailable; new card Veg Rice Bowl ₹180 waiting for approval; no order until you confirm | [ ] |
+| 11 | Cancel | Prepare → Cancel | "Proposal cancelled. No order was placed."; History unchanged | [ ] |
+| 12 | Double tap | Tap Confirm rapidly several times | Exactly one order in History | [ ] |
+| 13 | Network failure on turn | Stop the backend → Send | "Could not reach the server…" with a Retry button; restart backend → Retry works | [ ] |
+| 14 | Lost confirm response | Prepare → turn on airplane mode right after tapping Confirm (or stop the backend just after the request) → reconnect → "Retry confirm" | Same order returned ("Already saved earlier; no duplicate"), one order in History | [ ] |
+| 15 | App background/foreground | Prepare a proposal → Home → reopen | Card still there, still confirmable | [ ] |
+| 16 | App killed | Prepare → swipe the app away → reopen | Conversation and card restored; History restored | [ ] |
+| 17 | Backend restart | Restart `npm start` → History tab | Orders still listed | [ ] |
+| 18 | Unsupported request | "Order this on Swiggy" | Explains the limit, offers the sandbox flow | [ ] |
+| 19 | Missing info | "I want something vegetarian" | Asks for the budget; no proposal | [ ] |
+| 20 | Last-order directions | "Open directions for my last order" | Maps opens for the last order's restaurant | [ ] |
+| 21 | Activity / export | Activity tab → Export trace | Share sheet with JSON for that run | [ ] |
+
+Failed items and notes: **[FILL IN]**
