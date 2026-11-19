@@ -12,8 +12,6 @@ import {
   Share,
   StatusBar,
   StyleSheet,
-  Text,
-  TextInput,
   View,
 } from "react-native";
 import { StatusBar as ExpoStatusBar } from "expo-status-bar";
@@ -27,11 +25,22 @@ import {
   saveState,
 } from "./src/storage";
 import { useVoice } from "./src/useVoice";
+import { Grad, Input, T } from "../mobile/src/ui";
+import {
+  useFonts,
+  PlusJakartaSans_400Regular,
+  PlusJakartaSans_500Medium,
+  PlusJakartaSans_600SemiBold,
+  PlusJakartaSans_700Bold,
+  PlusJakartaSans_800ExtraBold,
+} from "@expo-google-fonts/plus-jakarta-sans";
 import {
   Bubble,
   Button,
   C,
   Header,
+  Icon,
+  LockedRecordingBar,
   MicButton,
   OrderRow,
   ProposalCard,
@@ -42,7 +51,7 @@ import {
   Welcome,
   rupees,
 } from "./src/components";
-import type { TabKey } from "./src/components";
+import type { IconName, TabKey } from "./src/components";
 import type {
   ActionStatus,
   ChatMessage,
@@ -57,6 +66,13 @@ type Tab = TabKey;
 const msgId = () => Crypto.randomUUID();
 
 export default function App() {
+  const [fontsLoaded] = useFonts({
+    PlusJakartaSans_400Regular,
+    PlusJakartaSans_500Medium,
+    PlusJakartaSans_600SemiBold,
+    PlusJakartaSans_700Bold,
+    PlusJakartaSans_800ExtraBold,
+  });
   const [st, setSt] = useState<PersistedState | null>(null);
   const stRef = useRef<PersistedState | null>(null);
   const [tab, setTab] = useState<Tab>("assistant");
@@ -362,6 +378,23 @@ export default function App() {
     setInput((prev) => (prev ? `${prev} ${t}` : t)),
   );
 
+  // WhatsApp-style lock: slide the mic up to keep recording without holding.
+  const [micLocked, setMicLocked] = useState(false);
+  const [recSeconds, setRecSeconds] = useState(0);
+  useEffect(() => {
+    if (voice.state === "idle") {
+      setMicLocked(false);
+      setRecSeconds(0);
+      return;
+    }
+    const t0 = Date.now();
+    const id = setInterval(
+      () => setRecSeconds(Math.floor((Date.now() - t0) / 1000)),
+      500,
+    );
+    return () => clearInterval(id);
+  }, [voice.state === "idle"]);
+
   const directionsForOrder = useCallback(
     (o: Order) =>
       runDeviceAction({
@@ -374,7 +407,7 @@ export default function App() {
     [runDeviceAction],
   );
 
-  if (!st) {
+  if (!st || !fontsLoaded) {
     return (
       <View
         style={{
@@ -437,17 +470,17 @@ export default function App() {
 
             {voice.notice ? (
               <View style={styles.notice}>
-                <Text style={{ fontSize: 16 }}>🎙️</Text>
+                <Icon name="mic-off" size={18} color={C.warn} />
                 <View style={{ flex: 1 }}>
-                  <Text style={{ color: C.warn, fontSize: 13, lineHeight: 19 }}>
+                  <T style={{ color: C.warn, fontSize: 13, lineHeight: 19 }}>
                     {voice.notice.text}
-                  </Text>
+                  </T>
                   {voice.notice.canOpenSettings ? (
                     <Pressable
                       onPress={voice.openSettings}
                       accessibilityRole="link"
                     >
-                      <Text
+                      <T
                         style={{
                           color: C.info,
                           marginTop: 4,
@@ -455,7 +488,7 @@ export default function App() {
                         }}
                       >
                         Open app settings ›
-                      </Text>
+                      </T>
                     </Pressable>
                   ) : null}
                 </View>
@@ -464,12 +497,12 @@ export default function App() {
                   accessibilityLabel="Dismiss"
                   hitSlop={10}
                 >
-                  <Text style={{ color: C.warn, fontSize: 16 }}>✕</Text>
+                  <Icon name="close" size={18} color={C.warn} />
                 </Pressable>
               </View>
             ) : null}
 
-            {listening ? (
+            {listening && !micLocked ? (
               <View
                 style={styles.recording}
                 accessibilityLiveRegion="assertive"
@@ -483,7 +516,7 @@ export default function App() {
                   }}
                 />
                 <View style={{ flex: 1 }}>
-                  <Text
+                  <T
                     style={{
                       color: C.danger,
                       fontWeight: "800",
@@ -492,63 +525,76 @@ export default function App() {
                     }}
                   >
                     {voice.state === "listening"
-                      ? "LISTENING · RELEASE TO STOP"
+                      ? "LISTENING · RELEASE TO STOP · SLIDE UP TO LOCK"
                       : "FINISHING…"}
-                  </Text>
-                  <Text
-                    style={{ color: C.ink, fontSize: 14 }}
-                    numberOfLines={2}
-                  >
+                  </T>
+                  <T style={{ color: C.ink, fontSize: 14 }} numberOfLines={2}>
                     {voice.interim || "Speak now…"}
-                  </Text>
+                  </T>
                 </View>
               </View>
             ) : null}
 
             <View style={styles.composer}>
-              <MicButton
-                listening={voice.state === "listening"}
-                available={voice.available}
-                disabled={sending}
-                onPressIn={voice.start}
-                onPressOut={voice.stop}
-              />
-              <TextInput
-                value={input}
-                onChangeText={setInput}
-                placeholder={
-                  voice.available
-                    ? "Hold 🎤 to talk, or type…"
-                    : "Type your request…"
-                }
-                placeholderTextColor={C.muted}
-                multiline
-                accessibilityLabel="Request text. Voice transcripts appear here for review before sending."
-                style={styles.input}
-              />
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Send"
-                onPress={() => send(input)}
-                disabled={!input.trim() || listening || sending}
-                style={({ pressed }) => [
-                  styles.send,
-                  {
-                    opacity: !input.trim() || listening || sending ? 0.4 : 1,
-                    transform: [{ scale: pressed ? 0.94 : 1 }],
-                  },
-                ]}
-              >
-                {sending ? (
-                  <ActivityIndicator color="#fff" />
-                ) : (
-                  <Text
-                    style={{ color: "#fff", fontSize: 20, fontWeight: "800" }}
+              {micLocked && listening ? (
+                <LockedRecordingBar
+                  seconds={recSeconds}
+                  interim={voice.interim}
+                  onCancel={voice.cancel}
+                  onStop={voice.stop}
+                />
+              ) : (
+                <>
+                  <MicButton
+                    listening={voice.state === "listening"}
+                    locked={micLocked}
+                    available={voice.available}
+                    disabled={sending}
+                    onStart={voice.start}
+                    onStop={voice.stop}
+                    onLock={() => setMicLocked(true)}
+                  />
+                  <Input
+                    value={input}
+                    onChangeText={setInput}
+                    placeholder={
+                      voice.available
+                        ? "Hold mic to talk, or type…"
+                        : "Type your request…"
+                    }
+                    placeholderTextColor={C.muted}
+                    multiline
+                    accessibilityLabel="Request text. Voice transcripts appear here for review before sending."
+                    style={styles.input}
+                  />
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="Send"
+                    onPress={() => send(input)}
+                    disabled={!input.trim() || listening || sending}
+                    style={({ pressed }) => [
+                      styles.send,
+                      {
+                        opacity:
+                          !input.trim() || listening || sending ? 0.4 : 1,
+                        transform: [{ scale: pressed ? 0.94 : 1 }],
+                      },
+                    ]}
                   >
-                    ➤
-                  </Text>
-                )}
-              </Pressable>
+                    {!(!input.trim() || listening || sending) || sending ? (
+                      <Grad
+                        colors={C.brandGrad}
+                        style={StyleSheet.absoluteFill}
+                      />
+                    ) : null}
+                    {sending ? (
+                      <ActivityIndicator color={C.onBrand} />
+                    ) : (
+                      <Icon name="arrow-up" size={22} color={C.onBrand} />
+                    )}
+                  </Pressable>
+                </>
+              )}
             </View>
           </View>
         )}
@@ -562,16 +608,16 @@ export default function App() {
             onRefresh={loadOrders}
             ListHeaderComponent={
               <View style={{ gap: 10 }}>
-                <Text style={styles.pageTitle}>Your sandbox orders</Text>
+                <T style={styles.pageTitle}>Your sandbox orders</T>
                 {listError ? (
-                  <Text style={{ color: C.warn }}>{listError}</Text>
+                  <T style={{ color: C.warn }}>{listError}</T>
                 ) : null}
                 <StatusChips statuses={st.statuses} />
               </View>
             }
             ListEmptyComponent={
               <Empty
-                icon="🧾"
+                icon="receipt-outline"
                 title="No orders yet"
                 text="Confirmed sandbox orders will appear here and stay after you close the app."
               />
@@ -594,17 +640,17 @@ export default function App() {
             onRefresh={loadRuns}
             ListHeaderComponent={
               <View style={{ gap: 4 }}>
-                <Text style={styles.pageTitle}>Activity</Text>
-                <Text style={{ color: C.muted, fontSize: 13 }}>
+                <T style={styles.pageTitle}>Activity</T>
+                <T style={{ color: C.muted, fontSize: 13 }}>
                   What the assistant actually did: tools called, validated
                   inputs, outcomes and timing.
                   {listError ? `\n${listError}` : ""}
-                </Text>
+                </T>
               </View>
             }
             ListEmptyComponent={
               <Empty
-                icon="📊"
+                icon="pulse-outline"
                 title="No activity yet"
                 text="Ask the assistant something and each step will show up here."
               />
@@ -628,11 +674,11 @@ export default function App() {
             contentContainerStyle={{ padding: 14, gap: 14 }}
             keyboardShouldPersistTaps="handled"
           >
-            <Text style={styles.pageTitle}>Settings</Text>
+            <T style={styles.pageTitle}>Settings</T>
 
             <View style={styles.settingsCard}>
-              <Text style={styles.settingsTitle}>🔌 Backend server</Text>
-              <TextInput
+              <SettingsTitle icon="server-outline" text="Backend server" />
+              <Input
                 value={urlDraft}
                 onChangeText={setUrlDraft}
                 autoCapitalize="none"
@@ -640,12 +686,12 @@ export default function App() {
                 keyboardType="url"
                 style={styles.urlInput}
               />
-              <Text style={{ color: C.muted, fontSize: 12, lineHeight: 18 }}>
+              <T style={{ color: C.muted, fontSize: 12, lineHeight: 18 }}>
                 Emulator: http://10.0.2.2:8787{"\n"}Phone on same Wi-Fi:
                 http://YOUR-PC-IP:8787{"\n"}Build default: {DEFAULT_API_URL}
-              </Text>
+              </T>
               <Button
-                icon="⚡"
+                icon="flash"
                 label="Save and test connection"
                 onPress={async () => {
                   const url = urlDraft.trim().replace(/\/+$/, "");
@@ -655,18 +701,18 @@ export default function App() {
                   setOnline(r.ok);
                   setHealth(
                     r.ok
-                      ? `✅ Connected · model: ${r.data.llm_configured ? r.data.model : "NOT CONFIGURED on server"}`
-                      : `❌ ${r.message}`,
+                      ? `Connected · model: ${r.data.llm_configured ? r.data.model : "NOT CONFIGURED on server"}`
+                      : `Not connected: ${r.message}`,
                   );
                 }}
               />
               {health ? (
-                <Text style={{ color: C.ink, fontSize: 14 }}>{health}</Text>
+                <T style={{ color: C.ink, fontSize: 14 }}>{health}</T>
               ) : null}
             </View>
 
             <View style={styles.settingsCard}>
-              <Text style={styles.settingsTitle}>🗣️ Voice language</Text>
+              <SettingsTitle icon="language-outline" text="Voice language" />
               <View style={{ flexDirection: "row", gap: 8 }}>
                 {(["en-IN", "ta-IN"] as const).map((l) => (
                   <View key={l} style={{ flex: 1 }}>
@@ -678,16 +724,16 @@ export default function App() {
                   </View>
                 ))}
               </View>
-              <Text style={{ color: C.muted, fontSize: 12 }}>
+              <T style={{ color: C.muted, fontSize: 12 }}>
                 Tamil is optional and needs the Tamil speech pack on the phone.
-              </Text>
+              </T>
             </View>
 
             <View style={styles.settingsCard}>
-              <Text style={styles.settingsTitle}>💬 Conversation</Text>
+              <SettingsTitle icon="chatbubbles-outline" text="Conversation" />
               <Button
                 kind="secondary"
-                icon="✨"
+                icon="add-circle-outline"
                 label="Start a new conversation"
                 onPress={() => {
                   update((x) => ({
@@ -703,10 +749,10 @@ export default function App() {
               />
             </View>
 
-            <Text style={{ color: C.muted, fontSize: 11, textAlign: "center" }}>
+            <T style={{ color: C.muted, fontSize: 11, textAlign: "center" }}>
               Sandbox demo · fictional restaurants · no real orders or payments
               {"\n"}Device id: {st.deviceId}
-            </Text>
+            </T>
           </ScrollView>
         )}
       </KeyboardAvoidingView>
@@ -720,22 +766,52 @@ export default function App() {
   );
 }
 
+function SettingsTitle({ icon, text }: { icon: IconName; text: string }) {
+  return (
+    <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+      <View
+        style={{
+          width: 34,
+          height: 34,
+          borderRadius: 11,
+          backgroundColor: C.brandSoft,
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        <Icon name={icon} size={18} color={C.brand} />
+      </View>
+      <T style={styles.settingsTitle}>{text}</T>
+    </View>
+  );
+}
+
 function Empty({
   icon,
   title,
   text,
 }: {
-  icon: string;
+  icon: IconName;
   title: string;
   text: string;
 }) {
   return (
     <View style={{ alignItems: "center", padding: 32, gap: 6 }}>
-      <Text style={{ fontSize: 40 }}>{icon}</Text>
-      <Text style={{ fontSize: 17, fontWeight: "700", color: C.ink }}>
-        {title}
-      </Text>
-      <Text
+      <View
+        style={{
+          width: 72,
+          height: 72,
+          borderRadius: 24,
+          backgroundColor: C.brandSoft,
+          alignItems: "center",
+          justifyContent: "center",
+          marginBottom: 6,
+        }}
+      >
+        <Icon name={icon} size={34} color={C.brand} />
+      </View>
+      <T style={{ fontSize: 17, fontWeight: "700", color: C.ink }}>{title}</T>
+      <T
         style={{
           fontSize: 14,
           color: C.muted,
@@ -744,7 +820,7 @@ function Empty({
         }}
       >
         {text}
-      </Text>
+      </T>
     </View>
   );
 }
@@ -770,7 +846,7 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     backgroundColor: C.dangerSoft,
     borderWidth: 1,
-    borderColor: "#F3C5C0",
+    borderColor: C.danger + "40",
   },
   composer: {
     flexDirection: "row",
@@ -790,7 +866,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: 14,
     paddingBottom: 12,
-    fontSize: 15,
+    fontSize: 14,
     color: C.ink,
     backgroundColor: C.bg,
     borderWidth: 1,
@@ -800,6 +876,7 @@ const styles = StyleSheet.create({
     width: 50,
     height: 50,
     borderRadius: 25,
+    overflow: "hidden",
     backgroundColor: C.brand,
     alignItems: "center",
     justifyContent: "center",

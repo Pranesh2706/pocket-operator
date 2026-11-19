@@ -1,14 +1,29 @@
 // Presentational components. No network or storage logic lives here.
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Animated,
   Easing,
+  PanResponder,
   Pressable,
   StyleSheet,
-  Text,
   View,
 } from "react-native";
+import { Grad, T } from "../src/ui";
+import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
+
+export type IconName = React.ComponentProps<typeof Ionicons>["name"];
+export function Icon({
+  name,
+  size = 18,
+  color = C.ink,
+}: {
+  name: IconName;
+  size?: number;
+  color?: string;
+}) {
+  return <Ionicons name={name} size={size} color={color} />;
+}
 import type {
   ActionStatus,
   ActivityStep,
@@ -18,25 +33,8 @@ import type {
   RunTrace,
 } from "./types";
 
-export const C = {
-  bg: "#FBF8F1", // warm cream
-  card: "#FFFFFF",
-  ink: "#1F2421",
-  muted: "#7A7F76",
-  line: "#ECE7DA",
-  brand: "#14532D", // deep leaf green
-  brand2: "#1F7A44",
-  brandSoft: "#E3F1E6",
-  saffron: "#E8833A",
-  saffronSoft: "#FDEBDC",
-  danger: "#B3261E",
-  dangerSoft: "#FBE7E5",
-  warn: "#8A5A00",
-  warnSoft: "#FFF3D4",
-  info: "#1E4E8C",
-  infoSoft: "#E4EDF9",
-  nonveg: "#8B2E16",
-};
+import { C } from "../src/theme";
+export { C };
 
 export function rupees(n: number) {
   return `₹${n}`;
@@ -59,7 +57,7 @@ export function Button({
   disabled?: boolean;
   busy?: boolean;
   accessibilityHint?: string;
-  icon?: string;
+  icon?: IconName;
 }) {
   const bg = {
     primary: C.brand,
@@ -68,7 +66,7 @@ export function Button({
     ghost: "transparent",
   }[kind];
   const fg = {
-    primary: "#fff",
+    primary: C.onBrand,
     secondary: C.ink,
     danger: C.danger,
     ghost: C.brand,
@@ -93,13 +91,16 @@ export function Button({
         kind === "primary" && !disabled && s.btnShadow,
       ]}
     >
+      {kind === "primary" ? (
+        <Grad colors={C.brandGrad} style={StyleSheet.absoluteFill} />
+      ) : null}
       {busy ? (
         <ActivityIndicator color={fg} />
       ) : (
-        <Text style={[s.btnText, { color: fg }]}>
-          {icon ? `${icon}  ` : ""}
-          {label}
-        </Text>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+          {icon ? <Icon name={icon} size={18} color={fg} /> : null}
+          <T style={[s.btnText, { color: fg }]}>{label}</T>
+        </View>
       )}
     </Pressable>
   );
@@ -107,7 +108,7 @@ export function Button({
 
 /** Indian food-label style marker: green square+dot = veg, brown square+triangle = non-veg. */
 export function DietMark({ veg, size = 16 }: { veg: boolean; size?: number }) {
-  const color = veg ? C.brand2 : C.nonveg;
+  const color = veg ? C.veg : C.nonveg;
   return (
     <View
       accessibilityLabel={veg ? "Vegetarian" : "Non-vegetarian"}
@@ -152,10 +153,12 @@ export function Pill({
   text,
   bg,
   fg,
+  icon,
 }: {
   text: string;
   bg: string;
   fg: string;
+  icon?: IconName;
 }) {
   return (
     <View
@@ -165,9 +168,13 @@ export function Pill({
         paddingHorizontal: 10,
         paddingVertical: 4,
         alignSelf: "flex-start",
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 4,
       }}
     >
-      <Text
+      {icon ? <Icon name={icon} size={11} color={fg} /> : null}
+      <T
         style={{
           color: fg,
           fontSize: 11,
@@ -176,7 +183,7 @@ export function Pill({
         }}
       >
         {text}
-      </Text>
+      </T>
     </View>
   );
 }
@@ -198,7 +205,7 @@ export function Header({
         ? "Server connected"
         : "Server offline";
   return (
-    <View style={[s.header, { paddingTop: topPad + 10 }]}>
+    <Grad colors={C.headerGrad} style={[s.header, { paddingTop: topPad + 10 }]}>
       <View
         style={{
           flexDirection: "row",
@@ -208,10 +215,14 @@ export function Header({
       >
         <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
           <View style={s.logo}>
-            <Text style={{ fontSize: 22 }}>🥡</Text>
+            <MaterialCommunityIcons
+              name="food-takeout-box"
+              size={24}
+              color={C.headerInk}
+            />
           </View>
           <View>
-            <Text style={s.title}>Pocket Operator</Text>
+            <T style={s.title}>Pocket Operator</T>
             <View
               style={{
                 flexDirection: "row",
@@ -229,13 +240,13 @@ export function Header({
                   backgroundColor: dot,
                 }}
               />
-              <Text style={s.subtitle}>{label}</Text>
+              <T style={s.subtitle}>{label}</T>
             </View>
           </View>
         </View>
-        <Pill text="SANDBOX" bg="rgba(255,255,255,0.16)" fg="#FFE7C7" />
+        <Pill text="SANDBOX" bg={C.headerPill} fg={C.headerPillInk} />
       </View>
-    </View>
+    </Grad>
   );
 }
 
@@ -251,10 +262,10 @@ export function TabBar({
   badge?: number;
 }) {
   const items: { key: TabKey; icon: string; label: string }[] = [
-    { key: "assistant", icon: "💬", label: "Assistant" },
-    { key: "history", icon: "🧾", label: "Orders" },
-    { key: "activity", icon: "📊", label: "Activity" },
-    { key: "settings", icon: "⚙️", label: "Settings" },
+    { key: "assistant", icon: "chatbubble-ellipses", label: "Assistant" },
+    { key: "history", icon: "receipt", label: "Orders" },
+    { key: "activity", icon: "pulse", label: "Activity" },
+    { key: "settings", icon: "settings-sharp", label: "Settings" },
   ];
   return (
     <View style={s.tabBar} accessibilityRole="tablist">
@@ -275,27 +286,37 @@ export function TabBar({
                 active && { backgroundColor: C.brandSoft },
               ]}
             >
-              <Text style={{ fontSize: 18, opacity: active ? 1 : 0.6 }}>
-                {it.icon}
-              </Text>
+              <Icon
+                name={
+                  (active
+                    ? it.icon
+                    : `${it.icon.replace("-sharp", "")}-outline`) as IconName
+                }
+                size={21}
+                color={active ? C.brand : C.muted}
+              />
               {it.key === "history" && badge ? (
                 <View style={s.badge}>
-                  <Text
-                    style={{ color: "#fff", fontSize: 10, fontWeight: "800" }}
+                  <T
+                    style={{
+                      color: C.onBrand,
+                      fontSize: 10,
+                      fontWeight: "800",
+                    }}
                   >
                     {badge}
-                  </Text>
+                  </T>
                 </View>
               ) : null}
             </View>
-            <Text
+            <T
               style={[
                 s.tabLabel,
                 active && { color: C.brand, fontWeight: "800" },
               ]}
             >
               {it.label}
-            </Text>
+            </T>
           </Pressable>
         );
       })}
@@ -308,24 +329,56 @@ export function TabBar({
 export function Welcome({ onPick }: { onPick: (t: string) => void }) {
   const suggestions = [
     {
-      icon: "🥗",
+      icon: "leaf" as IconName,
       text: "Find me the cheapest vegetarian lunch for no more than 200 rupees. Prepare an order and then show me how to get there.",
     },
-    { icon: "🍗", text: "Non-veg meal under 250 rupees" },
-    { icon: "🗺️", text: "Open directions for my last order" },
+    { icon: "flame" as IconName, text: "Non-veg meal under 250 rupees" },
+    { icon: "navigate" as IconName, text: "Open directions for my last order" },
   ];
   return (
     <View style={{ paddingHorizontal: 4, paddingTop: 12, gap: 14 }}>
-      <View style={s.welcomeCard}>
-        <Text style={{ fontSize: 30 }}>👋</Text>
-        <Text style={s.welcomeTitle}>What are you hungry for?</Text>
-        <Text style={s.welcomeText}>
-          Hold the mic and speak, or type. Tell me your budget and whether you
-          want veg or non-veg. I'll find the best match and prepare a sandbox
-          pickup for you to approve.
-        </Text>
-      </View>
-      <Text style={s.sectionLabel}>TRY SAYING</Text>
+      <Grad colors={C.brandGrad} style={s.welcomeCard}>
+        <View style={s.decoCircle} />
+        <View
+          style={[
+            s.decoCircle,
+            { width: 120, height: 120, right: -30, top: 70, opacity: 0.07 },
+          ]}
+        />
+        <View style={s.heroIcon}>
+          <MaterialCommunityIcons
+            name="silverware-fork-knife"
+            size={24}
+            color={C.onBrand}
+          />
+        </View>
+        <T style={[s.welcomeTitle, { color: C.onBrand }]}>
+          What are you hungry for?
+        </T>
+        <T style={[s.welcomeText, { color: C.onBrand, opacity: 0.85 }]}>
+          Hold the mic and speak, or type. Tell me your budget and veg or
+          non-veg. I'll find the best match and prepare a sandbox pickup for you
+          to approve.
+        </T>
+        <View
+          style={{
+            flexDirection: "row",
+            gap: 8,
+            marginTop: 6,
+            flexWrap: "wrap",
+          }}
+        >
+          <Pill icon="mic" text="VOICE" bg={C.headerPill} fg={C.onBrand} />
+          <Pill
+            icon="shield-checkmark"
+            text="YOU APPROVE"
+            bg={C.headerPill}
+            fg={C.onBrand}
+          />
+          <Pill icon="map" text="MAPS" bg={C.headerPill} fg={C.onBrand} />
+        </View>
+      </Grad>
+      <T style={s.sectionLabel}>TRY SAYING</T>
       {suggestions.map((sg) => (
         <Pressable
           key={sg.text}
@@ -337,11 +390,13 @@ export function Welcome({ onPick }: { onPick: (t: string) => void }) {
             pressed && { backgroundColor: C.brandSoft },
           ]}
         >
-          <Text style={{ fontSize: 20 }}>{sg.icon}</Text>
-          <Text style={{ flex: 1, color: C.ink, fontSize: 14, lineHeight: 20 }}>
+          <View style={s.iconBubble}>
+            <Icon name={sg.icon} size={18} color={C.brand} />
+          </View>
+          <T style={{ flex: 1, color: C.ink, fontSize: 14, lineHeight: 20 }}>
             {sg.text}
-          </Text>
-          <Text style={{ color: C.muted, fontSize: 18 }}>›</Text>
+          </T>
+          <Icon name="chevron-forward" size={18} color={C.muted} />
         </Pressable>
       ))}
     </View>
@@ -405,7 +460,7 @@ export function TypingIndicator({ text }: { text: string }) {
             />
           ))}
         </View>
-        <Text style={{ color: C.muted, fontSize: 13 }}>{text}</Text>
+        <T style={{ color: C.muted, fontSize: 13 }}>{text}</T>
       </View>
     </View>
   );
@@ -414,7 +469,7 @@ export function TypingIndicator({ text }: { text: string }) {
 function Avatar() {
   return (
     <View style={s.avatar}>
-      <Text style={{ fontSize: 14 }}>🥡</Text>
+      <Icon name="sparkles" size={14} color={C.brand} />
     </View>
   );
 }
@@ -432,7 +487,7 @@ export function Bubble({
   if (m.role === "system") {
     return (
       <View style={s.systemNote}>
-        <Text
+        <T
           style={{
             color: C.info,
             fontSize: 13,
@@ -441,12 +496,12 @@ export function Bubble({
           }}
         >
           {m.text}
-        </Text>
+        </T>
         {m.retryText ? (
           <View style={{ marginTop: 8, alignSelf: "center" }}>
             <Button
               kind="secondary"
-              icon="↻"
+              icon="refresh"
               label="Retry"
               onPress={() => onRetry(m.retryText!)}
               disabled={busy}
@@ -466,21 +521,30 @@ export function Bubble({
     >
       {!mine ? <Avatar /> : null}
       <View style={[s.bubble, mine ? s.mine : s.theirs]}>
-        <Text style={[s.bubbleText, mine && { color: "#fff" }]}>{m.text}</Text>
+        {mine ? (
+          <Grad colors={C.brandGrad} style={StyleSheet.absoluteFill} />
+        ) : null}
+        <T style={[s.bubbleText, mine && { color: C.onBrand }]}>{m.text}</T>
         {m.activity?.length ? (
           <View style={{ marginTop: 8 }}>
             <Pressable
               onPress={() => setOpen((o) => !o)}
               accessibilityRole="button"
               accessibilityLabel={open ? "Hide steps" : "Show steps"}
+              style={{ flexDirection: "row", alignItems: "center", gap: 5 }}
             >
-              <Text style={s.stepsToggle}>
-                🔧 {m.activity.length} step{m.activity.length > 1 ? "s" : ""}
+              <Icon name="git-commit-outline" size={14} color={C.brand} />
+              <T style={s.stepsToggle}>
+                {m.activity.length} step{m.activity.length > 1 ? "s" : ""}
                 {m.latencyMs != null
                   ? ` · ${(m.latencyMs / 1000).toFixed(1)}s`
-                  : ""}{" "}
-                {open ? "▴" : "▾"}
-              </Text>
+                  : ""}
+              </T>
+              <Icon
+                name={open ? "chevron-up" : "chevron-down"}
+                size={13}
+                color={C.brand}
+              />
             </Pressable>
             {open ? (
               <View style={s.activity}>
@@ -489,20 +553,19 @@ export function Bubble({
                     key={i}
                     style={{ flexDirection: "row", gap: 6, marginTop: 4 }}
                   >
-                    <Text
-                      style={{
-                        color: st.status === "ok" ? C.brand2 : C.danger,
-                        fontWeight: "800",
-                      }}
-                    >
-                      {st.status === "ok" ? "✓" : "✕"}
-                    </Text>
-                    <Text style={s.activityLine}>
-                      <Text style={{ fontWeight: "700", color: C.ink }}>
+                    <Icon
+                      name={
+                        st.status === "ok" ? "checkmark-circle" : "close-circle"
+                      }
+                      size={14}
+                      color={st.status === "ok" ? C.veg : C.danger}
+                    />
+                    <T style={s.activityLine}>
+                      <T style={{ fontWeight: "700", color: C.ink }}>
                         {st.tool}
-                      </Text>
+                      </T>
                       {st.decision ? `  ${st.decision}` : ""}
-                    </Text>
+                    </T>
                   </View>
                 ))}
               </View>
@@ -513,7 +576,7 @@ export function Bubble({
           <View style={{ marginTop: 10 }}>
             <Button
               kind="secondary"
-              icon="↻"
+              icon="refresh"
               label="Retry"
               onPress={() => onRetry(m.retryText!)}
               disabled={busy}
@@ -545,30 +608,42 @@ export function ProposalCard({
   const pending = proposal.status === "pending";
   const statusPill: Record<
     Proposal["status"],
-    { text: string; bg: string; fg: string }
+    { text: string; bg: string; fg: string; icon?: IconName }
   > = {
     pending: {
-      text: "AWAITING YOUR APPROVAL",
-      bg: C.saffronSoft,
-      fg: "#A4501B",
+      icon: "time" as IconName,
+      text: "AWAITING APPROVAL",
+      bg: C.accentSoft,
+      fg: C.pendingInk,
     },
-    confirmed: { text: "✓ CONFIRMED", bg: C.brandSoft, fg: C.brand },
-    cancelled: { text: "CANCELLED · NO ORDER", bg: "#EEE", fg: C.muted },
-    superseded: { text: "REPLACED BY NEWER PROPOSAL", bg: "#EEE", fg: C.muted },
+    confirmed: {
+      icon: "checkmark-circle" as IconName,
+      text: "CONFIRMED",
+      bg: "#FFFFFF",
+      fg: C.brand,
+    },
+    cancelled: { text: "CANCELLED · NO ORDER", bg: C.pillMuted, fg: C.muted },
+    superseded: {
+      text: "REPLACED BY NEWER PROPOSAL",
+      bg: C.pillMuted,
+      fg: C.muted,
+    },
     stale: { text: "OUT OF DATE", bg: C.dangerSoft, fg: C.danger },
   };
   const sp = statusPill[proposal.status];
   return (
     <View
-      style={[s.receipt, !pending && { opacity: 0.85 }]}
+      style={[s.receipt, !pending && { opacity: 0.9 }]}
       accessibilityLabel="Order review"
     >
-      <View style={s.sandboxStripe}>
-        <Text style={s.sandboxText}>
-          SANDBOX PICKUP · FICTIONAL ORDER · NO PAYMENT
-        </Text>
-      </View>
-      <View style={{ padding: 16, gap: 12 }}>
+      <Grad colors={C.brandGrad} style={s.receiptHead}>
+        <View style={s.decoCircle} />
+        <View
+          style={[
+            s.decoCircle,
+            { width: 90, height: 90, right: 40, top: -50, opacity: 0.06 },
+          ]}
+        />
         <View
           style={{
             flexDirection: "row",
@@ -576,34 +651,65 @@ export function ProposalCard({
             alignItems: "center",
           }}
         >
-          <Text style={s.sectionLabel}>REVIEW ORDER</Text>
+          <T
+            style={{
+              color: C.onBrand,
+              opacity: 0.85,
+              fontSize: 11,
+              fontWeight: "800",
+              letterSpacing: 1.2,
+            }}
+          >
+            REVIEW ORDER
+          </T>
           <Pill {...sp} />
         </View>
-
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
-          <View style={s.restIcon}>
-            <Text style={{ fontSize: 22 }}>🏪</Text>
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            gap: 12,
+            marginTop: 12,
+          }}
+        >
+          <View style={s.restIconGlass}>
+            <Icon name="storefront" size={22} color={C.onBrand} />
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={{ color: C.muted, fontSize: 12 }}>
+            <T style={{ color: C.onBrand, opacity: 0.8, fontSize: 12 }}>
               Restaurant · pickup
-            </Text>
-            <Text style={{ color: C.ink, fontSize: 16, fontWeight: "700" }}>
+            </T>
+            <T style={{ color: C.onBrand, fontSize: 18, fontWeight: "800" }}>
               {proposal.restaurant_name}
-            </Text>
+            </T>
           </View>
         </View>
+      </Grad>
 
+      <View style={s.sandboxStripe}>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+          <Icon name="flask" size={12} color={C.warn} />
+          <T style={s.sandboxText}>
+            SANDBOX PICKUP · FICTIONAL ORDER · NO PAYMENT
+          </T>
+        </View>
+      </View>
+
+      <View style={{ padding: 16, gap: 14 }}>
         <View style={s.itemRow}>
-          <DietMark veg={proposal.vegetarian} />
-          <Text
-            style={{ flex: 1, color: C.ink, fontSize: 16, fontWeight: "600" }}
-          >
-            {proposal.item_name}
-          </Text>
-          <Text style={{ color: C.muted, fontSize: 14 }}>
-            × {proposal.quantity}
-          </Text>
+          <DietMark veg={proposal.vegetarian} size={18} />
+          <View style={{ flex: 1 }}>
+            <T style={{ color: C.ink, fontSize: 16, fontWeight: "700" }}>
+              {proposal.item_name}
+            </T>
+            <T style={{ color: C.muted, fontSize: 12 }}>
+              {proposal.vegetarian ? "Vegetarian" : "Non-vegetarian"} · Qty{" "}
+              {proposal.quantity}
+            </T>
+          </View>
+          <T style={{ color: C.ink, fontSize: 15, fontWeight: "700" }}>
+            {rupees(proposal.unit_price)}
+          </T>
         </View>
 
         <View style={s.dashed} />
@@ -616,25 +722,34 @@ export function ProposalCard({
           }}
         >
           <View>
-            <Text style={{ color: C.muted, fontSize: 12 }}>Total</Text>
-            <Text style={{ color: C.muted, fontSize: 11 }}>
+            <T
+              style={{
+                color: C.muted,
+                fontSize: 12,
+                fontWeight: "700",
+                letterSpacing: 0.6,
+              }}
+            >
+              TOTAL
+            </T>
+            <T style={{ color: C.muted, fontSize: 11 }}>
               All-inclusive · no tax or delivery
-            </Text>
+            </T>
           </View>
-          <Text style={s.total}>{rupees(proposal.total)}</Text>
+          <T style={s.total}>{rupees(proposal.total)}</T>
         </View>
 
         {pending && proposal.open_directions_after_confirm ? (
           <View style={s.mapHint}>
-            <Text style={{ fontSize: 14 }}>🗺️</Text>
-            <Text style={{ color: C.info, fontSize: 13, flex: 1 }}>
+            <Icon name="navigate-circle" size={18} color={C.info} />
+            <T style={{ color: C.info, fontSize: 13, flex: 1 }}>
               Maps will open with directions after you confirm.
-            </Text>
+            </T>
           </View>
         ) : null}
 
         {pending ? (
-          <View style={{ flexDirection: "row", gap: 10, marginTop: 2 }}>
+          <View style={{ flexDirection: "row", gap: 10 }}>
             <View style={{ flex: 1 }}>
               <Button
                 kind="secondary"
@@ -644,14 +759,18 @@ export function ProposalCard({
                 disabled={confirming}
               />
             </View>
-            <View style={{ flex: 1.6 }}>
+            <View style={{ flex: 1.7 }}>
               <Button
                 label={
                   confirmInFlight && !confirming
                     ? "Retry confirm"
                     : `Confirm ${rupees(proposal.total)}`
                 }
-                icon={confirmInFlight && !confirming ? "↻" : "✓"}
+                icon={
+                  confirmInFlight && !confirming
+                    ? "refresh"
+                    : "checkmark-circle"
+                }
                 onPress={onConfirm}
                 busy={confirming}
                 disabled={cancelling}
@@ -669,23 +788,28 @@ export function ProposalCard({
 
 const STATUS_STYLE: Record<
   ActionStatus["kind"],
-  { icon: string; label: string; bg: string; fg: string }
+  { icon: IconName; label: string; bg: string; fg: string }
 > = {
   order_saved: {
-    icon: "✅",
+    icon: "checkmark-circle" as IconName,
     label: "SANDBOX ORDER SAVED",
     bg: C.brandSoft,
     fg: C.brand,
   },
-  maps_opened: { icon: "🗺️", label: "MAPS OPENED", bg: C.infoSoft, fg: C.info },
+  maps_opened: {
+    icon: "map" as IconName,
+    label: "MAPS OPENED",
+    bg: C.infoSoft,
+    fg: C.info,
+  },
   browser_fallback_opened: {
-    icon: "🌐",
+    icon: "globe" as IconName,
     label: "BROWSER FALLBACK OPENED",
     bg: C.warnSoft,
     fg: C.warn,
   },
   could_not_open_directions: {
-    icon: "⚠️",
+    icon: "warning" as IconName,
     label: "COULD NOT OPEN DIRECTIONS",
     bg: C.dangerSoft,
     fg: C.danger,
@@ -703,10 +827,10 @@ export function StatusChips({ statuses }: { statuses: ActionStatus[] }) {
             key={i}
             style={[s.chip, { backgroundColor: v.bg, borderLeftColor: v.fg }]}
           >
-            <Text style={{ fontSize: 18 }}>{v.icon}</Text>
+            <Icon name={v.icon} size={22} color={v.fg} />
             <View style={{ flex: 1 }}>
-              <Text style={[s.chipLabel, { color: v.fg }]}>{v.label}</Text>
-              <Text style={[s.chipText, { color: C.ink }]}>{st.text}</Text>
+              <T style={[s.chipLabel, { color: v.fg }]}>{v.label}</T>
+              <T style={[s.chipText, { color: C.ink }]}>{st.text}</T>
             </View>
           </View>
         );
@@ -717,20 +841,38 @@ export function StatusChips({ statuses }: { statuses: ActionStatus[] }) {
 
 // ---------- mic ----------
 
+const LOCK_DISTANCE = 70;
+
+/**
+ * WhatsApp-style push-to-talk: hold to record, release to stop; slide up to lock so recording
+ * continues hands-free (then Stop or Cancel from the recording bar).
+ */
 export function MicButton({
   listening,
+  locked,
   available,
   disabled,
-  onPressIn,
-  onPressOut,
+  onStart,
+  onStop,
+  onLock,
 }: {
   listening: boolean;
+  locked: boolean;
   available: boolean;
   disabled?: boolean;
-  onPressIn: () => void;
-  onPressOut: () => void;
+  onStart: () => void;
+  onStop: () => void;
+  onLock: () => void;
 }) {
   const pulse = useRef(new Animated.Value(0)).current;
+  const dragY = useRef(new Animated.Value(0)).current;
+  const lockedRef = useRef(locked);
+  const cb = useRef({ onStart, onStop, onLock, disabled });
+  cb.current = { onStart, onStop, onLock, disabled };
+  useEffect(() => {
+    lockedRef.current = locked;
+  }, [locked]);
+
   useEffect(() => {
     if (!listening) {
       pulse.setValue(0);
@@ -747,6 +889,39 @@ export function MicButton({
     loop.start();
     return () => loop.stop();
   }, [listening, pulse]);
+
+  const responder = useMemo(
+    () =>
+      PanResponder.create({
+        onStartShouldSetPanResponder: () => !cb.current.disabled,
+        onPanResponderTerminationRequest: () => false,
+        onPanResponderGrant: () => {
+          lockedRef.current = false;
+          dragY.setValue(0);
+          cb.current.onStart();
+        },
+        onPanResponderMove: (_e, g) => {
+          if (lockedRef.current) return;
+          const dy = Math.min(0, g.dy);
+          dragY.setValue(dy);
+          if (dy < -LOCK_DISTANCE) {
+            lockedRef.current = true;
+            dragY.setValue(0);
+            cb.current.onLock();
+          }
+        },
+        onPanResponderRelease: () => {
+          dragY.setValue(0);
+          if (!lockedRef.current) cb.current.onStop();
+        },
+        onPanResponderTerminate: () => {
+          dragY.setValue(0);
+          if (!lockedRef.current) cb.current.onStop();
+        },
+      }),
+    [dragY],
+  );
+
   const ringScale = pulse.interpolate({
     inputRange: [0, 1],
     outputRange: [1, 1.7],
@@ -755,6 +930,17 @@ export function MicButton({
     inputRange: [0, 1],
     outputRange: [0.45, 0],
   });
+  const lift = dragY.interpolate({
+    inputRange: [-LOCK_DISTANCE, 0],
+    outputRange: [-LOCK_DISTANCE, 0],
+    extrapolate: "clamp",
+  });
+  const hintOpacity = dragY.interpolate({
+    inputRange: [-LOCK_DISTANCE, 0],
+    outputRange: [1, 0.75],
+    extrapolate: "clamp",
+  });
+
   return (
     <View
       style={{
@@ -764,6 +950,18 @@ export function MicButton({
         justifyContent: "center",
       }}
     >
+      {listening && !locked ? (
+        <Animated.View
+          pointerEvents="none"
+          style={[
+            s.lockHint,
+            { opacity: hintOpacity, transform: [{ translateY: lift }] },
+          ]}
+        >
+          <Icon name="lock-closed" size={16} color={C.brand} />
+          <Icon name="chevron-up" size={14} color={C.muted} />
+        </Animated.View>
+      ) : null}
       {listening ? (
         <Animated.View
           pointerEvents="none"
@@ -778,27 +976,107 @@ export function MicButton({
           }}
         />
       ) : null}
-      <Pressable
+      <Animated.View
+        {...responder.panHandlers}
+        accessible
         accessibilityRole="button"
         accessibilityLabel={
-          listening ? "Recording. Release to stop" : "Hold to talk"
+          listening
+            ? "Recording. Release to stop, or slide up to lock"
+            : "Hold to talk. Slide up to lock"
         }
-        onPressIn={onPressIn}
-        onPressOut={onPressOut}
-        disabled={disabled}
-        style={({ pressed }) => [
+        style={[
           s.mic,
           {
             backgroundColor: listening
               ? C.danger
               : available
-                ? C.saffron
-                : "#CFC8B6",
-            transform: [{ scale: pressed || listening ? 1.08 : 1 }],
+                ? C.accent
+                : C.pillMuted,
+            opacity: disabled ? 0.5 : 1,
+            transform: [
+              { translateY: listening && !locked ? lift : 0 },
+              { scale: listening ? 1.1 : 1 },
+            ],
           },
         ]}
       >
-        <Text style={{ fontSize: 24 }}>{listening ? "🎙️" : "🎤"}</Text>
+        {available && !listening ? (
+          <Grad
+            colors={C.accentGrad}
+            style={[StyleSheet.absoluteFill, { borderRadius: 28 }]}
+          />
+        ) : null}
+        <Icon
+          name={listening ? "radio-button-on" : "mic"}
+          size={26}
+          color="#FFFFFF"
+        />
+      </Animated.View>
+    </View>
+  );
+}
+
+/** Shown instead of the text box while recording is locked. */
+export function LockedRecordingBar({
+  seconds,
+  interim,
+  onCancel,
+  onStop,
+}: {
+  seconds: number;
+  interim: string;
+  onCancel: () => void;
+  onStop: () => void;
+}) {
+  const mm = Math.floor(seconds / 60);
+  const ss = String(seconds % 60).padStart(2, "0");
+  return (
+    <View style={s.lockedBar} accessibilityLiveRegion="polite">
+      <Pressable
+        onPress={onCancel}
+        accessibilityRole="button"
+        accessibilityLabel="Cancel recording"
+        style={s.lockedBtn}
+        hitSlop={8}
+      >
+        <Icon name="trash-outline" size={20} color={C.danger} />
+      </Pressable>
+      <View style={{ flex: 1 }}>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+          <View
+            style={{
+              width: 8,
+              height: 8,
+              borderRadius: 4,
+              backgroundColor: C.danger,
+            }}
+          />
+          <T
+            style={{
+              color: C.danger,
+              fontWeight: "800",
+              fontSize: 12,
+              letterSpacing: 0.5,
+            }}
+          >
+            LOCKED · {mm}:{ss}
+          </T>
+        </View>
+        <T
+          style={{ color: C.ink, fontSize: 14, marginTop: 2 }}
+          numberOfLines={2}
+        >
+          {interim || "Speak now… tap stop when done"}
+        </T>
+      </View>
+      <Pressable
+        onPress={onStop}
+        accessibilityRole="button"
+        accessibilityLabel="Stop recording and review text"
+        style={[s.lockedBtn, { backgroundColor: C.brand }]}
+      >
+        <Icon name="stop" size={18} color={C.onBrand} />
       </Pressable>
     </View>
   );
@@ -817,17 +1095,15 @@ export function OrderRow({
     <View style={s.card}>
       <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
         <View style={s.restIcon}>
-          <Text style={{ fontSize: 20 }}>🧾</Text>
+          <Icon name="bag-check" size={20} color={C.accent} />
         </View>
         <View style={{ flex: 1 }}>
-          <Text style={s.orderTitle}>{o.item_name}</Text>
-          <Text style={{ color: C.muted, fontSize: 13 }}>
-            {o.restaurant_name}
-          </Text>
+          <T style={s.orderTitle}>{o.item_name}</T>
+          <T style={{ color: C.muted, fontSize: 13 }}>{o.restaurant_name}</T>
         </View>
-        <Text style={{ fontSize: 18, fontWeight: "800", color: C.ink }}>
+        <T style={{ fontSize: 18, fontWeight: "800", color: C.ink }}>
           {rupees(o.total)}
-        </Text>
+        </T>
       </View>
       <View
         style={{
@@ -846,17 +1122,17 @@ export function OrderRow({
           bg={C.brandSoft}
           fg={C.brand}
         />
-        <Text style={{ color: C.muted, fontSize: 12 }}>
+        <T style={{ color: C.muted, fontSize: 12 }}>
           {new Date(o.created_at).toLocaleString()}
-        </Text>
+        </T>
       </View>
-      <Text style={{ color: C.muted, fontSize: 11, marginTop: 6 }}>
+      <T style={{ color: C.muted, fontSize: 11, marginTop: 6 }}>
         Order {o.id} · qty {o.quantity} · pickup
-      </Text>
+      </T>
       <View style={{ marginTop: 10 }}>
         <Button
           kind="secondary"
-          icon="🗺️"
+          icon="navigate"
           label="Open directions"
           onPress={onDirections}
         />
@@ -866,13 +1142,13 @@ export function OrderRow({
 }
 
 export function RunCard({ r, onShare }: { r: RunTrace; onShare: () => void }) {
-  const meta: Record<string, { icon: string; title: string }> = {
-    agent: { icon: "💬", title: "Assistant turn" },
-    confirm: { icon: "✅", title: "Confirm tap" },
-    cancel: { icon: "✋", title: "Cancel tap" },
-    device_action: { icon: "📱", title: "Phone action" },
+  const meta: Record<string, { icon: IconName; title: string }> = {
+    agent: { icon: "chatbubble-ellipses", title: "Assistant turn" },
+    confirm: { icon: "checkmark-done-circle", title: "Confirm tap" },
+    cancel: { icon: "close-circle", title: "Cancel tap" },
+    device_action: { icon: "phone-portrait", title: "Phone action" },
   };
-  const m = meta[r.kind] ?? { icon: "•", title: r.kind };
+  const m = meta[r.kind] ?? { icon: "ellipse" as IconName, title: r.kind };
   const ok = ["completed"].includes(r.status);
   return (
     <View style={s.card}>
@@ -883,9 +1159,12 @@ export function RunCard({ r, onShare }: { r: RunTrace; onShare: () => void }) {
           justifyContent: "space-between",
         }}
       >
-        <Text style={s.orderTitle}>
-          {m.icon} {m.title}
-        </Text>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+          <View style={s.iconBubble}>
+            <Icon name={m.icon} size={17} color={C.brand} />
+          </View>
+          <T style={s.orderTitle}>{m.title}</T>
+        </View>
         <Pill
           text={r.status.toUpperCase()}
           bg={ok ? C.brandSoft : C.warnSoft}
@@ -893,7 +1172,7 @@ export function RunCard({ r, onShare }: { r: RunTrace; onShare: () => void }) {
         />
       </View>
       {r.user_text ? (
-        <Text
+        <T
           style={{
             color: C.ink,
             fontSize: 14,
@@ -902,13 +1181,13 @@ export function RunCard({ r, onShare }: { r: RunTrace; onShare: () => void }) {
           }}
         >
           “{r.user_text}”
-        </Text>
+        </T>
       ) : null}
-      <Text style={{ color: C.muted, fontSize: 12, marginTop: 4 }}>
+      <T style={{ color: C.muted, fontSize: 12, marginTop: 4 }}>
         {new Date(r.started_at).toLocaleTimeString()} · {r.latency_ms ?? "?"} ms
         {r.model ? ` · ${r.model}` : ""}
         {r.iterations ? ` · ${r.iterations} model call(s)` : ""}
-      </Text>
+      </T>
       <View
         style={{
           marginTop: 8,
@@ -920,38 +1199,37 @@ export function RunCard({ r, onShare }: { r: RunTrace; onShare: () => void }) {
       >
         {r.steps.map((st) => (
           <View key={st.seq}>
-            <Text style={{ fontSize: 13, color: C.ink }}>
-              <Text
-                style={{
-                  color: st.status === "ok" ? C.brand2 : C.danger,
-                  fontWeight: "800",
-                }}
-              >
-                {st.status === "ok" ? "✓ " : "✕ "}
-              </Text>
-              <Text style={{ fontWeight: "700" }}>{st.tool}</Text>
+            <View
+              style={{ flexDirection: "row", alignItems: "center", gap: 6 }}
+            >
+              <Icon
+                name={st.status === "ok" ? "checkmark-circle" : "close-circle"}
+                size={14}
+                color={st.status === "ok" ? C.veg : C.danger}
+              />
+              <T style={{ fontWeight: "700", fontSize: 13 }}>{st.tool}</T>
+            </View>
+            <T style={{ fontSize: 13, color: C.ink }}>
               {st.input && Object.keys(st.input as object).length ? (
-                <Text style={s.mono}> {JSON.stringify(st.input)}</Text>
+                <T style={s.mono}> {JSON.stringify(st.input)}</T>
               ) : null}
-            </Text>
+            </T>
             {st.decision ? (
-              <Text style={{ color: C.muted, fontSize: 12 }}>
-                → {st.decision}
-              </Text>
+              <T style={{ color: C.muted, fontSize: 12 }}>{st.decision}</T>
             ) : null}
           </View>
         ))}
       </View>
       {r.error ? (
-        <Text style={{ color: C.danger, fontSize: 12, marginTop: 6 }}>
+        <T style={{ color: C.danger, fontSize: 12, marginTop: 6 }}>
           Error: {r.error}
-        </Text>
+        </T>
       ) : null}
-      <Text style={{ color: C.muted, fontSize: 10, marginTop: 6 }}>{r.id}</Text>
+      <T style={{ color: C.muted, fontSize: 10, marginTop: 6 }}>{r.id}</T>
       <View style={{ marginTop: 8 }}>
         <Button
           kind="ghost"
-          icon="⤴"
+          icon="share-outline"
           label="Export trace (JSON)"
           onPress={onShare}
         />
@@ -962,24 +1240,24 @@ export function RunCard({ r, onShare }: { r: RunTrace; onShare: () => void }) {
 
 export const s = StyleSheet.create({
   btn: {
-    minHeight: 48,
-    borderRadius: 14,
+    minHeight: 50,
+    borderRadius: 16,
     borderWidth: 1,
+    overflow: "hidden",
     alignItems: "center",
     justifyContent: "center",
     paddingHorizontal: 16,
   },
   btnShadow: {
     elevation: 3,
-    shadowColor: "#14532D",
-    shadowOpacity: 0.25,
+    shadowColor: C.brand,
+    shadowOpacity: 0.35,
     shadowRadius: 6,
     shadowOffset: { width: 0, height: 3 },
   },
   btnText: { fontSize: 15, fontWeight: "700" },
 
   header: {
-    backgroundColor: C.brand,
     paddingHorizontal: 18,
     paddingBottom: 16,
     borderBottomLeftRadius: 22,
@@ -989,12 +1267,17 @@ export const s = StyleSheet.create({
     width: 42,
     height: 42,
     borderRadius: 14,
-    backgroundColor: "rgba(255,255,255,0.14)",
+    backgroundColor: C.headerPill,
     alignItems: "center",
     justifyContent: "center",
   },
-  title: { color: "#fff", fontSize: 20, fontWeight: "800", letterSpacing: 0.2 },
-  subtitle: { color: "rgba(255,255,255,0.8)", fontSize: 12 },
+  title: {
+    color: C.headerInk,
+    fontSize: 20,
+    fontWeight: "800",
+    letterSpacing: 0.2,
+  },
+  subtitle: { color: C.headerInk, opacity: 0.75, fontSize: 12 },
 
   tabBar: {
     flexDirection: "row",
@@ -1021,12 +1304,15 @@ export const s = StyleSheet.create({
   },
 
   welcomeCard: {
-    backgroundColor: C.card,
-    borderRadius: 20,
-    padding: 18,
-    borderWidth: 1,
-    borderColor: C.line,
+    overflow: "hidden",
+    borderRadius: 24,
+    padding: 20,
     gap: 6,
+    elevation: 6,
+    shadowColor: C.brand,
+    shadowOpacity: 0.25,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 8 },
   },
   welcomeTitle: { fontSize: 22, fontWeight: "800", color: C.ink },
   welcomeText: { fontSize: 14, color: C.muted, lineHeight: 21 },
@@ -1041,10 +1327,15 @@ export const s = StyleSheet.create({
     alignItems: "center",
     gap: 12,
     backgroundColor: C.card,
-    borderRadius: 16,
+    borderRadius: 18,
     borderWidth: 1,
     borderColor: C.line,
     padding: 14,
+    elevation: 2,
+    shadowColor: C.brand,
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
   },
 
   bubbleRow: {
@@ -1064,6 +1355,7 @@ export const s = StyleSheet.create({
   bubble: {
     maxWidth: "82%",
     borderRadius: 18,
+    overflow: "hidden",
     paddingHorizontal: 14,
     paddingVertical: 10,
   },
@@ -1073,6 +1365,11 @@ export const s = StyleSheet.create({
     borderWidth: 1,
     borderColor: C.line,
     borderBottomLeftRadius: 6,
+    elevation: 1,
+    shadowColor: "#000",
+    shadowOpacity: 0.04,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
   },
   bubbleText: { fontSize: 15, color: C.ink, lineHeight: 22 },
   stepsToggle: { fontSize: 12, color: C.brand2, fontWeight: "700" },
@@ -1093,22 +1390,62 @@ export const s = StyleSheet.create({
     marginVertical: 6,
   },
 
+  receiptHead: { padding: 16, overflow: "hidden" },
+  iconBubble: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    backgroundColor: C.brandSoft,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  heroIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 16,
+    backgroundColor: "rgba(255,255,255,0.18)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.25)",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 6,
+  },
+  restIconGlass: {
+    width: 46,
+    height: 46,
+    borderRadius: 14,
+    backgroundColor: "rgba(255,255,255,0.18)",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.25)",
+  },
+  decoCircle: {
+    position: "absolute",
+    right: -40,
+    top: -40,
+    width: 150,
+    height: 150,
+    borderRadius: 75,
+    backgroundColor: "#FFFFFF",
+    opacity: 0.08,
+  },
   receipt: {
     backgroundColor: C.card,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: C.line,
+    borderRadius: 24,
     overflow: "hidden",
-    elevation: 2,
-    shadowColor: "#000",
-    shadowOpacity: 0.06,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
+    elevation: 8,
+    shadowColor: C.brand,
+    shadowOpacity: C.dark ? 0.4 : 0.16,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 10 },
   },
   sandboxStripe: {
     backgroundColor: C.warnSoft,
-    paddingVertical: 6,
+    paddingVertical: 7,
     alignItems: "center",
+    borderBottomWidth: 1,
+    borderBottomColor: C.line,
   },
   sandboxText: {
     color: C.warn,
@@ -1127,17 +1464,24 @@ export const s = StyleSheet.create({
   itemRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 10,
-    backgroundColor: C.bg,
-    borderRadius: 12,
-    padding: 12,
+    gap: 12,
+    backgroundColor: C.cardAlt,
+    borderRadius: 16,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: C.line,
   },
   dashed: {
     borderBottomWidth: 1,
     borderStyle: "dashed",
-    borderColor: "#D9D2C0",
+    borderColor: C.dashed,
   },
-  total: { fontSize: 30, fontWeight: "800", color: C.ink },
+  total: {
+    fontSize: 34,
+    fontWeight: "800",
+    color: C.brand,
+    letterSpacing: -0.5,
+  },
   mapHint: {
     flexDirection: "row",
     gap: 8,
@@ -1149,23 +1493,52 @@ export const s = StyleSheet.create({
 
   chip: {
     flexDirection: "row",
-    gap: 10,
+    gap: 12,
     alignItems: "center",
-    borderRadius: 14,
-    padding: 12,
+    borderRadius: 18,
+    padding: 14,
     borderLeftWidth: 4,
   },
   chipLabel: { fontSize: 11, fontWeight: "800", letterSpacing: 0.6 },
   chipText: { fontSize: 13, marginTop: 2, lineHeight: 18 },
 
+  lockHint: {
+    position: "absolute",
+    bottom: 66,
+    width: 40,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: C.card,
+    borderWidth: 1,
+    borderColor: C.line,
+    alignItems: "center",
+    gap: 2,
+    elevation: 3,
+  },
+  lockedBar: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    minHeight: 56,
+  },
+  lockedBtn: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: C.dangerSoft,
+  },
   mic: {
     width: 56,
     height: 56,
     borderRadius: 28,
+    overflow: "hidden",
     alignItems: "center",
     justifyContent: "center",
     elevation: 4,
-    shadowColor: "#000",
+    shadowColor: C.accent,
     shadowOpacity: 0.2,
     shadowRadius: 6,
     shadowOffset: { width: 0, height: 3 },
@@ -1173,10 +1546,15 @@ export const s = StyleSheet.create({
 
   card: {
     backgroundColor: C.card,
-    borderRadius: 18,
+    borderRadius: 20,
+    padding: 16,
     borderWidth: 1,
     borderColor: C.line,
-    padding: 14,
+    elevation: 3,
+    shadowColor: C.brand,
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
   },
   orderTitle: { fontSize: 16, fontWeight: "700", color: C.ink },
   mono: {

@@ -49,6 +49,7 @@ export function useVoice(
   const pressed = useRef(false);
   const errored = useRef(false);
   const active = useRef(false);
+  const discard = useRef(false);
 
   useSpeechRecognitionEvent("start", () => {
     active.current = true;
@@ -108,6 +109,14 @@ export function useVoice(
   useSpeechRecognitionEvent("end", () => {
     active.current = false;
     setState("idle");
+    if (discard.current) {
+      // Cancelled by the user: drop whatever was heard.
+      discard.current = false;
+      finals.current = "";
+      current.current = "";
+      setInterim("");
+      return;
+    }
     const text = `${finals.current} ${current.current}`.trim();
     if (text) {
       onTranscript(text);
@@ -174,6 +183,7 @@ export function useVoice(
       finals.current = "";
       current.current = "";
       errored.current = false;
+      discard.current = false;
       setInterim("");
       setState("listening");
       ExpoSpeechRecognitionModule.start({
@@ -201,6 +211,18 @@ export function useVoice(
     }
   }, [state]);
 
+  /** Stop and throw away the recording (used by the locked-recording Cancel button). */
+  const cancel = useCallback(() => {
+    pressed.current = false;
+    discard.current = true;
+    try {
+      ExpoSpeechRecognitionModule.abort();
+    } catch {
+      discard.current = false;
+      setState("idle");
+    }
+  }, []);
+
   const openSettings = useCallback(() => {
     Linking.openSettings().catch(() => {});
   }, []);
@@ -212,6 +234,7 @@ export function useVoice(
     available,
     start,
     stop,
+    cancel,
     openSettings,
     clearNotice: () => setNotice(null),
   };
