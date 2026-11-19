@@ -14,3 +14,5 @@ mobile/ios/
 *.aab
 *.keystore
 .DS_Store
+
+pocket-operator-source.zip
