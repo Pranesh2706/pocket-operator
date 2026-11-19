@@ -3,7 +3,9 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Animated,
   AppState,
+  Easing,
   FlatList,
   KeyboardAvoidingView,
   Platform,
@@ -76,6 +78,33 @@ export default function App() {
   const [st, setSt] = useState<PersistedState | null>(null);
   const stRef = useRef<PersistedState | null>(null);
   const [tab, setTab] = useState<Tab>("assistant");
+
+  // Page transition: content fades in and slides from the side you are moving towards.
+  const pageOpacity = useRef(new Animated.Value(1)).current;
+  const pageX = useRef(new Animated.Value(0)).current;
+  const prevTab = useRef<Tab>("assistant");
+  useEffect(() => {
+    const order: Tab[] = ["assistant", "history", "activity", "settings"];
+    const dir = order.indexOf(tab) >= order.indexOf(prevTab.current) ? 1 : -1;
+    if (prevTab.current === tab) return;
+    prevTab.current = tab;
+    pageOpacity.setValue(0);
+    pageX.setValue(dir * 28);
+    Animated.parallel([
+      Animated.timing(pageOpacity, {
+        toValue: 1,
+        duration: 240,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }),
+      Animated.timing(pageX, {
+        toValue: 0,
+        duration: 280,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, [tab, pageOpacity, pageX]);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const [confirming, setConfirming] = useState(false);
@@ -433,391 +462,402 @@ export default function App() {
       <Header topPad={topPad} online={online} />
 
       <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding">
-        {tab === "assistant" && (
-          <View style={{ flex: 1 }}>
-            <FlatList
-              ref={chatRef}
-              style={{ flex: 1 }}
-              contentContainerStyle={{ padding: 14, paddingBottom: 8 }}
-              data={st.messages}
-              keyExtractor={(m) => m.id}
-              keyboardShouldPersistTaps="handled"
-              onContentSizeChange={() =>
-                chatRef.current?.scrollToEnd({ animated: true })
-              }
-              ListEmptyComponent={<Welcome onPick={(t) => setInput(t)} />}
-              renderItem={({ item }) => (
-                <Bubble m={item} onRetry={send} busy={sending} />
-              )}
-              ListFooterComponent={
-                <View style={{ gap: 12, marginTop: 6 }}>
-                  {sending ? (
-                    <TypingIndicator text="Searching the sandbox menu…" />
-                  ) : null}
-                  {st.proposal ? (
-                    <ProposalCard
-                      proposal={st.proposal}
-                      confirmInFlight={st.confirmInFlight === st.proposal.id}
-                      confirming={confirming}
-                      cancelling={cancelling}
-                      onConfirm={confirm}
-                      onCancel={cancel}
+        <Animated.View
+          style={{
+            flex: 1,
+            opacity: pageOpacity,
+            transform: [{ translateX: pageX }],
+          }}
+        >
+          {tab === "assistant" && (
+            <View style={{ flex: 1 }}>
+              <FlatList
+                ref={chatRef}
+                style={{ flex: 1 }}
+                contentContainerStyle={{ padding: 14, paddingBottom: 8 }}
+                data={st.messages}
+                keyExtractor={(m) => m.id}
+                keyboardShouldPersistTaps="handled"
+                onContentSizeChange={() =>
+                  chatRef.current?.scrollToEnd({ animated: true })
+                }
+                ListEmptyComponent={<Welcome onPick={(t) => setInput(t)} />}
+                renderItem={({ item }) => (
+                  <Bubble m={item} onRetry={send} busy={sending} />
+                )}
+                ListFooterComponent={
+                  <View style={{ gap: 12, marginTop: 6 }}>
+                    {sending ? (
+                      <TypingIndicator text="Searching the sandbox menu…" />
+                    ) : null}
+                    {st.proposal ? (
+                      <ProposalCard
+                        proposal={st.proposal}
+                        confirmInFlight={st.confirmInFlight === st.proposal.id}
+                        confirming={confirming}
+                        cancelling={cancelling}
+                        onConfirm={confirm}
+                        onCancel={cancel}
+                      />
+                    ) : null}
+                    <StatusChips statuses={st.statuses} />
+                  </View>
+                }
+              />
+
+              {voice.notice ? (
+                <View style={styles.notice}>
+                  <Icon name="mic-off" size={18} color={C.warn} />
+                  <View style={{ flex: 1 }}>
+                    <T style={{ color: C.warn, fontSize: 13, lineHeight: 19 }}>
+                      {voice.notice.text}
+                    </T>
+                    {voice.notice.canOpenSettings ? (
+                      <Pressable
+                        onPress={voice.openSettings}
+                        accessibilityRole="link"
+                      >
+                        <T
+                          style={{
+                            color: C.info,
+                            marginTop: 4,
+                            fontWeight: "700",
+                          }}
+                        >
+                          Open app settings ›
+                        </T>
+                      </Pressable>
+                    ) : null}
+                  </View>
+                  <Pressable
+                    onPress={voice.clearNotice}
+                    accessibilityLabel="Dismiss"
+                    hitSlop={10}
+                  >
+                    <Icon name="close" size={18} color={C.warn} />
+                  </Pressable>
+                </View>
+              ) : null}
+
+              {listening && !micLocked ? (
+                <View
+                  style={styles.recording}
+                  accessibilityLiveRegion="assertive"
+                >
+                  <View
+                    style={{
+                      width: 10,
+                      height: 10,
+                      borderRadius: 5,
+                      backgroundColor: C.danger,
+                    }}
+                  />
+                  <View style={{ flex: 1 }}>
+                    <T
+                      style={{
+                        color: C.danger,
+                        fontWeight: "800",
+                        fontSize: 12,
+                        letterSpacing: 0.5,
+                      }}
+                    >
+                      {voice.state === "listening"
+                        ? "LISTENING · RELEASE TO STOP · SLIDE UP TO LOCK"
+                        : "FINISHING…"}
+                    </T>
+                    <T style={{ color: C.ink, fontSize: 14 }} numberOfLines={2}>
+                      {voice.interim || "Speak now…"}
+                    </T>
+                  </View>
+                </View>
+              ) : null}
+
+              <View style={styles.composer}>
+                {micLocked && listening ? (
+                  <LockedRecordingBar
+                    seconds={recSeconds}
+                    interim={voice.interim}
+                    onCancel={voice.cancel}
+                    onStop={voice.stop}
+                  />
+                ) : (
+                  <>
+                    <MicButton
+                      listening={voice.state === "listening"}
+                      locked={micLocked}
+                      available={voice.available}
+                      disabled={sending}
+                      onStart={voice.start}
+                      onStop={voice.stop}
+                      onLock={() => setMicLocked(true)}
                     />
+                    <Input
+                      value={input}
+                      onChangeText={setInput}
+                      placeholder={
+                        voice.available
+                          ? "Hold mic to talk, or type…"
+                          : "Type your request…"
+                      }
+                      placeholderTextColor={C.muted}
+                      multiline
+                      accessibilityLabel="Request text. Voice transcripts appear here for review before sending."
+                      style={styles.input}
+                    />
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel="Send"
+                      onPress={() => send(input)}
+                      disabled={!input.trim() || listening || sending}
+                      style={({ pressed }) => [
+                        styles.send,
+                        {
+                          opacity:
+                            !input.trim() || listening || sending ? 0.4 : 1,
+                          transform: [{ scale: pressed ? 0.94 : 1 }],
+                        },
+                      ]}
+                    >
+                      {!(!input.trim() || listening || sending) || sending ? (
+                        <Grad
+                          colors={C.brandGrad}
+                          style={StyleSheet.absoluteFill}
+                        />
+                      ) : null}
+                      {sending ? (
+                        <ActivityIndicator color={C.onBrand} />
+                      ) : (
+                        <Icon name="arrow-up" size={22} color={C.onBrand} />
+                      )}
+                    </Pressable>
+                  </>
+                )}
+              </View>
+            </View>
+          )}
+
+          {tab === "history" && (
+            <FlatList
+              contentContainerStyle={{ padding: 14, gap: 12 }}
+              data={st.orders}
+              keyExtractor={(o) => o.id}
+              refreshing={loadingList}
+              onRefresh={loadOrders}
+              ListHeaderComponent={
+                <View style={{ gap: 10 }}>
+                  <T style={styles.pageTitle}>Your sandbox orders</T>
+                  {listError ? (
+                    <T style={{ color: C.warn }}>{listError}</T>
                   ) : null}
                   <StatusChips statuses={st.statuses} />
                 </View>
               }
-            />
-
-            {voice.notice ? (
-              <View style={styles.notice}>
-                <Icon name="mic-off" size={18} color={C.warn} />
-                <View style={{ flex: 1 }}>
-                  <T style={{ color: C.warn, fontSize: 13, lineHeight: 19 }}>
-                    {voice.notice.text}
-                  </T>
-                  {voice.notice.canOpenSettings ? (
-                    <Pressable
-                      onPress={voice.openSettings}
-                      accessibilityRole="link"
-                    >
-                      <T
-                        style={{
-                          color: C.info,
-                          marginTop: 4,
-                          fontWeight: "700",
-                        }}
-                      >
-                        Open app settings ›
-                      </T>
-                    </Pressable>
-                  ) : null}
-                </View>
-                <Pressable
-                  onPress={voice.clearNotice}
-                  accessibilityLabel="Dismiss"
-                  hitSlop={10}
-                >
-                  <Icon name="close" size={18} color={C.warn} />
-                </Pressable>
-              </View>
-            ) : null}
-
-            {listening && !micLocked ? (
-              <View
-                style={styles.recording}
-                accessibilityLiveRegion="assertive"
-              >
-                <View
-                  style={{
-                    width: 10,
-                    height: 10,
-                    borderRadius: 5,
-                    backgroundColor: C.danger,
-                  }}
+              ListEmptyComponent={
+                <Empty
+                  icon="receipt-outline"
+                  title="No orders yet"
+                  text="Confirmed sandbox orders will appear here and stay after you close the app."
                 />
-                <View style={{ flex: 1 }}>
-                  <T
-                    style={{
-                      color: C.danger,
-                      fontWeight: "800",
-                      fontSize: 12,
-                      letterSpacing: 0.5,
-                    }}
-                  >
-                    {voice.state === "listening"
-                      ? "LISTENING · RELEASE TO STOP · SLIDE UP TO LOCK"
-                      : "FINISHING…"}
-                  </T>
-                  <T style={{ color: C.ink, fontSize: 14 }} numberOfLines={2}>
-                    {voice.interim || "Speak now…"}
-                  </T>
-                </View>
-              </View>
-            ) : null}
-
-            <View style={styles.composer}>
-              {micLocked && listening ? (
-                <LockedRecordingBar
-                  seconds={recSeconds}
-                  interim={voice.interim}
-                  onCancel={voice.cancel}
-                  onStop={voice.stop}
+              }
+              renderItem={({ item }) => (
+                <OrderRow
+                  o={item}
+                  onDirections={() => directionsForOrder(item)}
                 />
-              ) : (
-                <>
-                  <MicButton
-                    listening={voice.state === "listening"}
-                    locked={micLocked}
-                    available={voice.available}
-                    disabled={sending}
-                    onStart={voice.start}
-                    onStop={voice.stop}
-                    onLock={() => setMicLocked(true)}
-                  />
-                  <Input
-                    value={input}
-                    onChangeText={setInput}
-                    placeholder={
-                      voice.available
-                        ? "Hold mic to talk, or type…"
-                        : "Type your request…"
-                    }
-                    placeholderTextColor={C.muted}
-                    multiline
-                    accessibilityLabel="Request text. Voice transcripts appear here for review before sending."
-                    style={styles.input}
-                  />
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel="Send"
-                    onPress={() => send(input)}
-                    disabled={!input.trim() || listening || sending}
-                    style={({ pressed }) => [
-                      styles.send,
-                      {
-                        opacity:
-                          !input.trim() || listening || sending ? 0.4 : 1,
-                        transform: [{ scale: pressed ? 0.94 : 1 }],
-                      },
-                    ]}
-                  >
-                    {!(!input.trim() || listening || sending) || sending ? (
-                      <Grad
-                        colors={C.brandGrad}
-                        style={StyleSheet.absoluteFill}
-                      />
-                    ) : null}
-                    {sending ? (
-                      <ActivityIndicator color={C.onBrand} />
-                    ) : (
-                      <Icon name="arrow-up" size={22} color={C.onBrand} />
-                    )}
-                  </Pressable>
-                </>
               )}
-            </View>
-          </View>
-        )}
+            />
+          )}
 
-        {tab === "history" && (
-          <FlatList
-            contentContainerStyle={{ padding: 14, gap: 12 }}
-            data={st.orders}
-            keyExtractor={(o) => o.id}
-            refreshing={loadingList}
-            onRefresh={loadOrders}
-            ListHeaderComponent={
-              <View style={{ gap: 10 }}>
-                <T style={styles.pageTitle}>Your sandbox orders</T>
-                {listError ? (
-                  <T style={{ color: C.warn }}>{listError}</T>
-                ) : null}
-                <StatusChips statuses={st.statuses} />
-              </View>
-            }
-            ListEmptyComponent={
-              <Empty
-                icon="receipt-outline"
-                title="No orders yet"
-                text="Confirmed sandbox orders will appear here and stay after you close the app."
-              />
-            }
-            renderItem={({ item }) => (
-              <OrderRow
-                o={item}
-                onDirections={() => directionsForOrder(item)}
-              />
-            )}
-          />
-        )}
+          {tab === "activity" && (
+            <FlatList
+              contentContainerStyle={{ padding: 14, gap: 12 }}
+              data={runs}
+              keyExtractor={(r) => r.id}
+              refreshing={loadingList}
+              onRefresh={loadRuns}
+              ListHeaderComponent={
+                <View style={{ gap: 4 }}>
+                  <T style={styles.pageTitle}>Activity</T>
+                  <T style={{ color: C.muted, fontSize: 13 }}>
+                    What the assistant actually did: tools called, validated
+                    inputs, outcomes and timing.
+                    {listError ? `\n${listError}` : ""}
+                  </T>
+                </View>
+              }
+              ListEmptyComponent={
+                <Empty
+                  icon="pulse-outline"
+                  title="No activity yet"
+                  text="Ask the assistant something and each step will show up here."
+                />
+              }
+              renderItem={({ item }) => (
+                <RunCard
+                  r={item}
+                  onShare={() =>
+                    Share.share({
+                      title: `Run ${item.id}`,
+                      message: JSON.stringify(item, null, 2),
+                    })
+                  }
+                />
+              )}
+            />
+          )}
 
-        {tab === "activity" && (
-          <FlatList
-            contentContainerStyle={{ padding: 14, gap: 12 }}
-            data={runs}
-            keyExtractor={(r) => r.id}
-            refreshing={loadingList}
-            onRefresh={loadRuns}
-            ListHeaderComponent={
-              <View style={{ gap: 4 }}>
-                <T style={styles.pageTitle}>Activity</T>
-                <T style={{ color: C.muted, fontSize: 13 }}>
-                  What the assistant actually did: tools called, validated
-                  inputs, outcomes and timing.
-                  {listError ? `\n${listError}` : ""}
+          {tab === "settings" && (
+            <ScrollView
+              contentContainerStyle={{ padding: 14, gap: 14 }}
+              keyboardShouldPersistTaps="handled"
+            >
+              <T style={styles.pageTitle}>Settings</T>
+
+              <View style={styles.settingsCard}>
+                <SettingsTitle icon="language-outline" text="Voice language" />
+                <View style={{ flexDirection: "row", gap: 8 }}>
+                  {(["en-IN", "ta-IN"] as const).map((l) => (
+                    <View key={l} style={{ flex: 1 }}>
+                      <Button
+                        kind={st.language === l ? "primary" : "secondary"}
+                        label={l === "en-IN" ? "English" : "தமிழ்"}
+                        onPress={() => update((x) => ({ ...x, language: l }))}
+                      />
+                    </View>
+                  ))}
+                </View>
+                <T style={{ color: C.muted, fontSize: 12 }}>
+                  Tamil is optional and needs the Tamil speech pack on the
+                  phone.
                 </T>
               </View>
-            }
-            ListEmptyComponent={
-              <Empty
-                icon="pulse-outline"
-                title="No activity yet"
-                text="Ask the assistant something and each step will show up here."
-              />
-            }
-            renderItem={({ item }) => (
-              <RunCard
-                r={item}
-                onShare={() =>
-                  Share.share({
-                    title: `Run ${item.id}`,
-                    message: JSON.stringify(item, null, 2),
-                  })
-                }
-              />
-            )}
-          />
-        )}
 
-        {tab === "settings" && (
-          <ScrollView
-            contentContainerStyle={{ padding: 14, gap: 14 }}
-            keyboardShouldPersistTaps="handled"
-          >
-            <T style={styles.pageTitle}>Settings</T>
-
-            <View style={styles.settingsCard}>
-              <SettingsTitle icon="language-outline" text="Voice language" />
-              <View style={{ flexDirection: "row", gap: 8 }}>
-                {(["en-IN", "ta-IN"] as const).map((l) => (
-                  <View key={l} style={{ flex: 1 }}>
-                    <Button
-                      kind={st.language === l ? "primary" : "secondary"}
-                      label={l === "en-IN" ? "English" : "தமிழ்"}
-                      onPress={() => update((x) => ({ ...x, language: l }))}
-                    />
-                  </View>
-                ))}
+              <View style={styles.settingsCard}>
+                <SettingsTitle icon="chatbubbles-outline" text="Conversation" />
+                <Button
+                  kind="secondary"
+                  icon="add-circle-outline"
+                  label="Start a new conversation"
+                  onPress={() => {
+                    update((x) => ({
+                      ...x,
+                      sessionId: null,
+                      messages: [],
+                      proposal: null,
+                      confirmInFlight: null,
+                      statuses: [],
+                    }));
+                    setTab("assistant");
+                  }}
+                />
               </View>
-              <T style={{ color: C.muted, fontSize: 12 }}>
-                Tamil is optional and needs the Tamil speech pack on the phone.
-              </T>
-            </View>
 
-            <View style={styles.settingsCard}>
-              <SettingsTitle icon="chatbubbles-outline" text="Conversation" />
-              <Button
-                kind="secondary"
-                icon="add-circle-outline"
-                label="Start a new conversation"
-                onPress={() => {
-                  update((x) => ({
-                    ...x,
-                    sessionId: null,
-                    messages: [],
-                    proposal: null,
-                    confirmInFlight: null,
-                    statuses: [],
-                  }));
-                  setTab("assistant");
-                }}
-              />
-            </View>
-
-            <View style={styles.settingsCard}>
-              <Pressable
-                onPress={() => setDevOpen((o) => !o)}
-                accessibilityRole="button"
-                accessibilityState={{ expanded: devOpen }}
-                style={{
-                  flexDirection: "row",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                }}
-              >
-                <SettingsTitle
-                  icon="code-slash-outline"
-                  text="Developer options"
-                />
-                <Icon
-                  name={devOpen ? "chevron-up" : "chevron-down"}
-                  size={18}
-                  color={C.muted}
-                />
-              </Pressable>
-              <T style={{ color: C.muted, fontSize: 12 }}>
-                {st.apiUrlCustom
-                  ? "Using a custom server"
-                  : "Using the built-in server"}{" "}
-                ·{" "}
-                {online
-                  ? "connected"
-                  : online === false
-                    ? "offline"
-                    : "checking…"}
-              </T>
-              {devOpen ? (
-                <View style={{ gap: 10, marginTop: 4 }}>
-                  <T style={{ fontSize: 13, fontWeight: "700" }}>Backend URL</T>
-                  <Input
-                    value={urlDraft}
-                    onChangeText={setUrlDraft}
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                    keyboardType="url"
-                    style={styles.urlInput}
+              <View style={styles.settingsCard}>
+                <Pressable
+                  onPress={() => setDevOpen((o) => !o)}
+                  accessibilityRole="button"
+                  accessibilityState={{ expanded: devOpen }}
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                  }}
+                >
+                  <SettingsTitle
+                    icon="code-slash-outline"
+                    text="Developer options"
                   />
-                  <T style={{ color: C.muted, fontSize: 12, lineHeight: 18 }}>
-                    Only needed to point the app at your own local backend.
-                    {"\n"}Emulator: http://10.0.2.2:8787 · Same Wi-Fi:
-                    http://YOUR-PC-IP:8787{"\n"}Built-in: {DEFAULT_API_URL}
-                  </T>
-                  <Button
-                    icon="flash"
-                    label="Save and test"
-                    onPress={async () => {
-                      const url = urlDraft.trim().replace(/\/+$/, "");
-                      update((x) => ({
-                        ...x,
-                        apiUrl: url,
-                        apiUrlCustom: url !== DEFAULT_API_URL,
-                      }));
-                      setHealth("Testing…");
-                      const r = await api.health(url);
-                      setOnline(r.ok);
-                      setHealth(
-                        r.ok
-                          ? `Connected · model: ${r.data.llm_configured ? r.data.model : "NOT CONFIGURED on server"}`
-                          : `Not connected: ${r.message}`,
-                      );
-                    }}
+                  <Icon
+                    name={devOpen ? "chevron-up" : "chevron-down"}
+                    size={18}
+                    color={C.muted}
                   />
-                  {st.apiUrlCustom ? (
+                </Pressable>
+                <T style={{ color: C.muted, fontSize: 12 }}>
+                  {st.apiUrlCustom
+                    ? "Using a custom server"
+                    : "Using the built-in server"}{" "}
+                  ·{" "}
+                  {online
+                    ? "connected"
+                    : online === false
+                      ? "offline"
+                      : "checking…"}
+                </T>
+                {devOpen ? (
+                  <View style={{ gap: 10, marginTop: 4 }}>
+                    <T style={{ fontSize: 13, fontWeight: "700" }}>
+                      Backend URL
+                    </T>
+                    <Input
+                      value={urlDraft}
+                      onChangeText={setUrlDraft}
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                      keyboardType="url"
+                      style={styles.urlInput}
+                    />
+                    <T style={{ color: C.muted, fontSize: 12, lineHeight: 18 }}>
+                      Only needed to point the app at your own local backend.
+                      {"\n"}Emulator: http://10.0.2.2:8787 · Same Wi-Fi:
+                      http://YOUR-PC-IP:8787{"\n"}Built-in: {DEFAULT_API_URL}
+                    </T>
                     <Button
-                      kind="secondary"
-                      icon="refresh"
-                      label="Use built-in server"
+                      icon="flash"
+                      label="Save and test"
                       onPress={async () => {
+                        const url = urlDraft.trim().replace(/\/+$/, "");
                         update((x) => ({
                           ...x,
-                          apiUrl: DEFAULT_API_URL,
-                          apiUrlCustom: false,
+                          apiUrl: url,
+                          apiUrlCustom: url !== DEFAULT_API_URL,
                         }));
-                        setUrlDraft(DEFAULT_API_URL);
-                        const r = await api.health(DEFAULT_API_URL);
+                        setHealth("Testing…");
+                        const r = await api.health(url);
                         setOnline(r.ok);
                         setHealth(
                           r.ok
-                            ? "Connected to the built-in server"
+                            ? `Connected · model: ${r.data.llm_configured ? r.data.model : "NOT CONFIGURED on server"}`
                             : `Not connected: ${r.message}`,
                         );
                       }}
                     />
-                  ) : null}
-                  {health ? (
-                    <T style={{ color: C.ink, fontSize: 14 }}>{health}</T>
-                  ) : null}
-                </View>
-              ) : null}
-            </View>
+                    {st.apiUrlCustom ? (
+                      <Button
+                        kind="secondary"
+                        icon="refresh"
+                        label="Use built-in server"
+                        onPress={async () => {
+                          update((x) => ({
+                            ...x,
+                            apiUrl: DEFAULT_API_URL,
+                            apiUrlCustom: false,
+                          }));
+                          setUrlDraft(DEFAULT_API_URL);
+                          const r = await api.health(DEFAULT_API_URL);
+                          setOnline(r.ok);
+                          setHealth(
+                            r.ok
+                              ? "Connected to the built-in server"
+                              : `Not connected: ${r.message}`,
+                          );
+                        }}
+                      />
+                    ) : null}
+                    {health ? (
+                      <T style={{ color: C.ink, fontSize: 14 }}>{health}</T>
+                    ) : null}
+                  </View>
+                ) : null}
+              </View>
 
-            <T style={{ color: C.muted, fontSize: 11, textAlign: "center" }}>
-              Sandbox demo · fictional restaurants · no real orders or payments
-              {"\n"}Device id: {st.deviceId}
-            </T>
-          </ScrollView>
-        )}
+              <T style={{ color: C.muted, fontSize: 11, textAlign: "center" }}>
+                Sandbox demo · fictional restaurants · no real orders or
+                payments{"\n"}Device id: {st.deviceId}
+              </T>
+            </ScrollView>
+          )}
+        </Animated.View>
       </KeyboardAvoidingView>
 
       <TabBar

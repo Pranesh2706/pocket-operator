@@ -9,7 +9,7 @@ import {
   StyleSheet,
   View,
 } from "react-native";
-import { Grad, T } from "../src/ui";
+import { Grad, T } from "./ui";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 
 export type IconName = React.ComponentProps<typeof Ionicons>["name"];
@@ -33,7 +33,7 @@ import type {
   RunTrace,
 } from "./types";
 
-import { C } from "../src/theme";
+import { C } from "./theme";
 export { C };
 
 export function rupees(n: number) {
@@ -267,59 +267,95 @@ export function TabBar({
     { key: "activity", icon: "pulse", label: "Activity" },
     { key: "settings", icon: "settings-sharp", label: "Settings" },
   ];
+  const index = Math.max(
+    0,
+    items.findIndex((i) => i.key === tab),
+  );
+  const [barWidth, setBarWidth] = useState(0);
+  const slot = barWidth / items.length;
+  const x = useRef(new Animated.Value(index)).current;
+
+  // Uber-style: the highlight pill slides across the tabs in between to the one you tapped.
+  useEffect(() => {
+    // Smooth glide (no bounce): ease-out cubic, ~280 ms, on the native thread.
+    Animated.timing(x, {
+      toValue: index,
+      duration: 280,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    }).start();
+  }, [index, x]);
+
+  const PILL = 64;
+  const translateX = x.interpolate({
+    inputRange: [0, items.length - 1],
+    outputRange: [
+      (slot - PILL) / 2,
+      (slot - PILL) / 2 + slot * (items.length - 1),
+    ],
+  });
+
   return (
-    <View style={s.tabBar} accessibilityRole="tablist">
-      {items.map((it) => {
-        const active = tab === it.key;
-        return (
-          <Pressable
-            key={it.key}
-            accessibilityRole="tab"
-            accessibilityLabel={it.label}
-            accessibilityState={{ selected: active }}
-            onPress={() => onChange(it.key)}
-            style={s.tabItem}
-          >
-            <View
-              style={[
-                s.tabIconWrap,
-                active && { backgroundColor: C.brandSoft },
-              ]}
+    <View style={s.tabBarWrap}>
+      <View
+        style={s.tabBar}
+        accessibilityRole="tablist"
+        onLayout={(e) => setBarWidth(e.nativeEvent.layout.width)}
+      >
+        {barWidth > 0 ? (
+          <Animated.View
+            pointerEvents="none"
+            style={[s.tabPill, { width: PILL, transform: [{ translateX }] }]}
+          />
+        ) : null}
+        {items.map((it, i) => {
+          const active = i === index;
+          return (
+            <Pressable
+              key={it.key}
+              accessibilityRole="tab"
+              accessibilityLabel={it.label}
+              accessibilityState={{ selected: active }}
+              onPress={() => onChange(it.key)}
+              style={s.tabItem}
+              hitSlop={6}
             >
-              <Icon
-                name={
-                  (active
-                    ? it.icon
-                    : `${it.icon.replace("-sharp", "")}-outline`) as IconName
-                }
-                size={21}
-                color={active ? C.brand : C.muted}
-              />
-              {it.key === "history" && badge ? (
-                <View style={s.badge}>
-                  <T
-                    style={{
-                      color: C.onBrand,
-                      fontSize: 10,
-                      fontWeight: "800",
-                    }}
-                  >
-                    {badge}
-                  </T>
-                </View>
-              ) : null}
-            </View>
-            <T
-              style={[
-                s.tabLabel,
-                active && { color: C.brand, fontWeight: "800" },
-              ]}
-            >
-              {it.label}
-            </T>
-          </Pressable>
-        );
-      })}
+              <View>
+                <Icon
+                  name={
+                    (active
+                      ? it.icon
+                      : `${it.icon.replace("-sharp", "")}-outline`) as IconName
+                  }
+                  size={19}
+                  color={active ? C.brand : C.muted}
+                />
+                {it.key === "history" && badge ? (
+                  <View style={s.badge}>
+                    <T
+                      style={{
+                        color: C.onBrand,
+                        fontSize: 9,
+                        fontWeight: "800",
+                      }}
+                    >
+                      {badge}
+                    </T>
+                  </View>
+                ) : null}
+              </View>
+              <T
+                style={[
+                  s.tabLabel,
+                  active && { color: C.brand, fontWeight: "800" },
+                ]}
+              >
+                {it.label}
+              </T>
+            </Pressable>
+          );
+        })}
+      </View>
     </View>
   );
 }
@@ -1281,26 +1317,54 @@ export const s = StyleSheet.create({
 
   tabBar: {
     flexDirection: "row",
+    height: 54,
+    alignItems: "center",
     backgroundColor: C.card,
-    borderTopWidth: 1,
-    borderTopColor: C.line,
-    paddingTop: 6,
-    paddingBottom: 14,
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: C.line,
+    elevation: 8,
+    shadowColor: "#000",
+    shadowOpacity: 0.08,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 4 },
   },
-  tabItem: { flex: 1, alignItems: "center", gap: 2 },
-  tabIconWrap: { paddingHorizontal: 16, paddingVertical: 4, borderRadius: 999 },
-  tabLabel: { fontSize: 11, color: C.muted, fontWeight: "600" },
-  badge: {
-    position: "absolute",
-    top: -2,
-    right: 6,
-    backgroundColor: C.saffron,
-    borderRadius: 999,
-    minWidth: 16,
-    height: 16,
+  tabItem: {
+    flex: 1,
+    height: "100%",
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: 4,
+    gap: 1,
+  },
+  tabBarWrap: {
+    paddingHorizontal: 14,
+    paddingTop: 6,
+    paddingBottom: 14,
+    backgroundColor: C.bg,
+  },
+  tabPill: {
+    position: "absolute",
+    left: 0,
+    top: 6,
+    height: 42,
+    borderRadius: 16,
+    backgroundColor: C.brandSoft,
+  },
+  tabIconWrap: { paddingHorizontal: 16, paddingVertical: 4, borderRadius: 999 },
+  tabLabel: { fontSize: 10, color: C.muted, fontWeight: "600" },
+  badge: {
+    position: "absolute",
+    top: -5,
+    right: -9,
+    backgroundColor: C.accent,
+    borderRadius: 999,
+    minWidth: 15,
+    height: 15,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 3,
+    borderWidth: 1.5,
+    borderColor: C.card,
   },
 
   welcomeCard: {
