@@ -2,7 +2,13 @@
 // backgrounded or killed. The server stays the source of truth; this is a cache plus ids.
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Crypto from "expo-crypto";
-import type { ActionStatus, ChatMessage, Order, Proposal } from "./types";
+import type {
+  ActionStatus,
+  ChatMessage,
+  DeviceAction,
+  Order,
+  Proposal,
+} from "./types";
 
 const KEY = "pocket-operator/state/v1";
 
@@ -24,6 +30,8 @@ export type PersistedState = {
   confirmInFlight: string | null;
   /** Outcome chips for the latest confirm / phone action, e.g. [order_saved, maps_opened]. */
   statuses: ActionStatus[];
+  /** Directions the server allowed after a confirmed order; Maps opens only when the user taps the button. */
+  pendingDirections: DeviceAction | null;
   orders: Order[];
 };
 
@@ -43,6 +51,7 @@ export function initialState(): PersistedState {
     proposal: null,
     confirmInFlight: null,
     statuses: [],
+    pendingDirections: null,
     orders: [],
   };
 }

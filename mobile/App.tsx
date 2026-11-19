@@ -225,6 +225,7 @@ export default function App() {
         proposal: t.proposal ?? x.proposal,
         confirmInFlight: t.proposal ? null : x.confirmInFlight,
         statuses: t.proposal ? [] : x.statuses,
+        pendingDirections: t.proposal ? null : x.pendingDirections,
       }));
       addMsg({
         role: "assistant",
@@ -262,6 +263,7 @@ export default function App() {
         confirmInFlight: null,
         statuses: [saved],
         orders: [order, ...x.orders.filter((o) => o.id !== order.id)],
+        pendingDirections: device_action ?? null,
       }));
       addMsg({
         role: "system",
@@ -270,7 +272,7 @@ export default function App() {
             ? `${saved.text} (Already saved earlier; no duplicate created.)`
             : saved.text,
       });
-      if (device_action) await runDeviceAction(device_action, [saved]);
+      // Maps does not open automatically: the user taps "Open directions" when ready.
       return;
     }
     if (isProposalChanged(r)) {
@@ -531,6 +533,21 @@ export default function App() {
                       />
                     ) : null}
                     <StatusChips statuses={st.statuses} />
+                    {st.pendingDirections ? (
+                      <Button
+                        icon="navigate"
+                        label={`Open directions to ${st.pendingDirections.label}`}
+                        accessibilityHint="Opens your Maps app at the restaurant"
+                        onPress={() => {
+                          const a = st.pendingDirections!;
+                          const saved = st.statuses.filter(
+                            (x) => x.kind === "order_saved",
+                          );
+                          update((x) => ({ ...x, pendingDirections: null }));
+                          runDeviceAction(a, saved);
+                        }}
+                      />
+                    ) : null}
                   </View>
                 }
               />
@@ -776,6 +793,7 @@ export default function App() {
                       proposal: null,
                       confirmInFlight: null,
                       statuses: [],
+                      pendingDirections: null,
                     }));
                     setTab("assistant");
                   }}

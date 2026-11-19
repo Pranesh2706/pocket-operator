@@ -778,7 +778,7 @@ export function ProposalCard({
           <View style={s.mapHint}>
             <Icon name="navigate-circle" size={18} color={C.info} />
             <T style={{ color: C.info, fontSize: 13, flex: 1 }}>
-              Maps will open with directions after you confirm.
+              After you confirm, tap Open directions to get there.
             </T>
           </View>
         ) : null}
