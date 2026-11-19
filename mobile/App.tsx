@@ -25,7 +25,7 @@ import {
   saveState,
 } from "./src/storage";
 import { useVoice } from "./src/useVoice";
-import { Grad, Input, T } from "../mobile/src/ui";
+import { Grad, Input, T } from "./src/ui";
 import {
   useFonts,
   PlusJakartaSans_400Regular,
@@ -86,6 +86,7 @@ export default function App() {
   const [urlDraft, setUrlDraft] = useState("");
   const [health, setHealth] = useState<string | null>(null);
   const [online, setOnline] = useState<boolean | null>(null);
+  const [devOpen, setDevOpen] = useState(false);
   const confirmLock = useRef(false);
   const chatRef = useRef<FlatList<ChatMessage>>(null);
 
@@ -677,41 +678,6 @@ export default function App() {
             <T style={styles.pageTitle}>Settings</T>
 
             <View style={styles.settingsCard}>
-              <SettingsTitle icon="server-outline" text="Backend server" />
-              <Input
-                value={urlDraft}
-                onChangeText={setUrlDraft}
-                autoCapitalize="none"
-                autoCorrect={false}
-                keyboardType="url"
-                style={styles.urlInput}
-              />
-              <T style={{ color: C.muted, fontSize: 12, lineHeight: 18 }}>
-                Emulator: http://10.0.2.2:8787{"\n"}Phone on same Wi-Fi:
-                http://YOUR-PC-IP:8787{"\n"}Build default: {DEFAULT_API_URL}
-              </T>
-              <Button
-                icon="flash"
-                label="Save and test connection"
-                onPress={async () => {
-                  const url = urlDraft.trim().replace(/\/+$/, "");
-                  update((x) => ({ ...x, apiUrl: url }));
-                  setHealth("Testing…");
-                  const r = await api.health(url);
-                  setOnline(r.ok);
-                  setHealth(
-                    r.ok
-                      ? `Connected · model: ${r.data.llm_configured ? r.data.model : "NOT CONFIGURED on server"}`
-                      : `Not connected: ${r.message}`,
-                  );
-                }}
-              />
-              {health ? (
-                <T style={{ color: C.ink, fontSize: 14 }}>{health}</T>
-              ) : null}
-            </View>
-
-            <View style={styles.settingsCard}>
               <SettingsTitle icon="language-outline" text="Voice language" />
               <View style={{ flexDirection: "row", gap: 8 }}>
                 {(["en-IN", "ta-IN"] as const).map((l) => (
@@ -747,6 +713,103 @@ export default function App() {
                   setTab("assistant");
                 }}
               />
+            </View>
+
+            <View style={styles.settingsCard}>
+              <Pressable
+                onPress={() => setDevOpen((o) => !o)}
+                accessibilityRole="button"
+                accessibilityState={{ expanded: devOpen }}
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                }}
+              >
+                <SettingsTitle
+                  icon="code-slash-outline"
+                  text="Developer options"
+                />
+                <Icon
+                  name={devOpen ? "chevron-up" : "chevron-down"}
+                  size={18}
+                  color={C.muted}
+                />
+              </Pressable>
+              <T style={{ color: C.muted, fontSize: 12 }}>
+                {st.apiUrlCustom
+                  ? "Using a custom server"
+                  : "Using the built-in server"}{" "}
+                ·{" "}
+                {online
+                  ? "connected"
+                  : online === false
+                    ? "offline"
+                    : "checking…"}
+              </T>
+              {devOpen ? (
+                <View style={{ gap: 10, marginTop: 4 }}>
+                  <T style={{ fontSize: 13, fontWeight: "700" }}>Backend URL</T>
+                  <Input
+                    value={urlDraft}
+                    onChangeText={setUrlDraft}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    keyboardType="url"
+                    style={styles.urlInput}
+                  />
+                  <T style={{ color: C.muted, fontSize: 12, lineHeight: 18 }}>
+                    Only needed to point the app at your own local backend.
+                    {"\n"}Emulator: http://10.0.2.2:8787 · Same Wi-Fi:
+                    http://YOUR-PC-IP:8787{"\n"}Built-in: {DEFAULT_API_URL}
+                  </T>
+                  <Button
+                    icon="flash"
+                    label="Save and test"
+                    onPress={async () => {
+                      const url = urlDraft.trim().replace(/\/+$/, "");
+                      update((x) => ({
+                        ...x,
+                        apiUrl: url,
+                        apiUrlCustom: url !== DEFAULT_API_URL,
+                      }));
+                      setHealth("Testing…");
+                      const r = await api.health(url);
+                      setOnline(r.ok);
+                      setHealth(
+                        r.ok
+                          ? `Connected · model: ${r.data.llm_configured ? r.data.model : "NOT CONFIGURED on server"}`
+                          : `Not connected: ${r.message}`,
+                      );
+                    }}
+                  />
+                  {st.apiUrlCustom ? (
+                    <Button
+                      kind="secondary"
+                      icon="refresh"
+                      label="Use built-in server"
+                      onPress={async () => {
+                        update((x) => ({
+                          ...x,
+                          apiUrl: DEFAULT_API_URL,
+                          apiUrlCustom: false,
+                        }));
+                        setUrlDraft(DEFAULT_API_URL);
+                        const r = await api.health(DEFAULT_API_URL);
+                        setOnline(r.ok);
+                        setHealth(
+                          r.ok
+                            ? "Connected to the built-in server"
+                            : `Not connected: ${r.message}`,
+                        );
+                      }}
+                    />
+                  ) : null}
+                  {health ? (
+                    <T style={{ color: C.ink, fontSize: 14 }}>{health}</T>
+                  ) : null}
+                </View>
+              ) : null}
             </View>
 
             <T style={{ color: C.muted, fontSize: 11, textAlign: "center" }}>
