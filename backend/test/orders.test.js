@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { startServer, prepareViaAgent, countOrders, DEVICE, OTHER_DEVICE } from './helpers.js';
+import { startServer, prepareViaAgent, countOrders, scriptedLlm, tool, say, lastObservation, DEVICE, OTHER_DEVICE } from './helpers.js';
 import { openDb, seed } from '../src/db.js';
 import { searchMenu } from '../src/catalog.js';
 
@@ -151,6 +151,23 @@ describe('sandbox orders', () => {
       assert.equal(r.body.new_proposal.item_id, 'm1');
     });
 
+    test('freshness keeps the minimum price: m2 drops to Rs 150 (below "above 200") -> next item over 200 is proposed (m6)', async () => {
+      srv.setLlm(
+        scriptedLlm([
+          tool('search_menu', { diet: 'veg', min_price_inr: 201 }),
+          (m) => tool('prepare_order', { item_id: lastObservation(m).best_item_id, open_directions_after_confirm: false }),
+          say('ok'),
+        ])
+      );
+      const { proposal } = (await srv.post('/api/agent/turn', { device_id: DEVICE, text: 'veg above 200 rupees' })).body;
+      assert.equal(proposal.item_id, 'm2');
+      await srv.post('/api/dev/items/m2', { price: 150 });
+      const r = await confirm(proposal);
+      assert.equal(r.status, 409);
+      assert.equal(r.body.new_proposal.item_id, 'm6');
+      assert.equal(countOrders(srv.db), 0);
+    });
+
     test('nothing matches any more: explained, no new proposal, no order', async () => {
       const { proposal } = await prepareViaAgent(srv);
       await srv.post('/api/dev/items/m4', { available: false });
@@ -237,6 +254,18 @@ describe('sandbox orders', () => {
     }
     const hist = await srv.get(`/api/orders?device_id=${DEVICE}`);
     assert.equal(hist.body.orders.length, 1);
+  });
+
+  test('a database from the previous version (no min_price column) is migrated on open', async () => {
+    const { DatabaseSync } = await import('node:sqlite');
+    const p = srv.dbPath + '.old.db';
+    const old = new DatabaseSync(p);
+    old.exec("CREATE TABLE proposals (id TEXT PRIMARY KEY, session_id TEXT NOT NULL, device_id TEXT NOT NULL, run_id TEXT, item_id TEXT NOT NULL, restaurant_id TEXT NOT NULL, item_name TEXT NOT NULL, restaurant_name TEXT NOT NULL, vegetarian INTEGER NOT NULL, quantity INTEGER NOT NULL, unit_price INTEGER NOT NULL, total INTEGER NOT NULL, currency TEXT NOT NULL, diet TEXT NOT NULL, max_price INTEGER NOT NULL, open_directions INTEGER NOT NULL DEFAULT 0, status TEXT NOT NULL, status_reason TEXT, replaced_by TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)");
+    old.close();
+    const db = openDb(p);
+    const cols = db.prepare('PRAGMA table_info(proposals)').all().map((c) => c.name);
+    db.close();
+    assert.ok(cols.includes('min_price'));
   });
 
   test('reset restores seed data and clears orders', async () => {

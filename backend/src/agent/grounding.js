@@ -114,3 +114,26 @@ const LAST_ORDER =
 export function wantsLastOrderDirections(text) {
   return DIRECTIONS.test(text) && LAST_ORDER.test(text);
 }
+
+const MAX_WORDS =
+  /\b(below|under|less than|lesser than|within|max|maximum|no more than|not more than|up ?to|budget(?: of| is)?|cheaper than)\b/i;
+const MIN_WORDS =
+  /\b(above|over|more than|greater than|at least|min|minimum|starting|from)\b/i;
+
+/**
+ * Which direction the user's price words point, from their latest message:
+ * 'max' ("under 200"), 'min' ("above 200"), 'both' ("between 200 and 300" / both kinds of words), or null.
+ */
+export function priceDirection(text) {
+  if (/\bbetween\b/i.test(text)) return "both";
+  const hasMax = MAX_WORDS.test(text);
+  const hasMin = MIN_WORDS.test(text.replace(/\bmore than\b(?=.*\bno\b)/i, ""));
+  if (hasMax && hasMin)
+    return /\bno more than|not more than\b/i.test(text) &&
+      !/\b(above|over|at least|minimum)\b/i.test(text)
+      ? "max"
+      : "both";
+  if (hasMax) return "max";
+  if (hasMin) return "min";
+  return null;
+}

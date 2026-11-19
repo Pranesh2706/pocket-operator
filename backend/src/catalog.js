@@ -50,14 +50,15 @@ export function compareItems(a, b) {
  * Search the live catalogue. Returns all matches sorted by the selection rule plus counts of
  * why other items were excluded, so the agent (and the trace) can explain "nothing matches".
  */
-export function searchMenu(db, { diet, max_price }) {
+export function searchMenu(db, { diet, max_price, min_price = 0 }) {
   const all = listItems(db);
-  const excluded = { wrong_diet: 0, over_budget: 0, unavailable: 0 };
+  const excluded = { wrong_diet: 0, over_budget: 0, under_minimum: 0, unavailable: 0 };
   const matches = [];
   for (const item of all) {
     if (!dietMatches(item, diet)) excluded.wrong_diet++;
     else if (!item.available) excluded.unavailable++;
     else if (item.price > max_price) excluded.over_budget++; // budget is inclusive
+    else if (item.price < min_price) excluded.under_minimum++; // "at least X" is inclusive
     else matches.push(item);
   }
   matches.sort(compareItems);

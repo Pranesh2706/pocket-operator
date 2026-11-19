@@ -22,6 +22,7 @@ import {
   statedDiets,
   mentionsExternalService,
   wantsLastOrderDirections,
+  priceDirection,
 } from "../src/agent/grounding.js";
 import { LIMITS } from "../src/agent/runner.js";
 
@@ -144,6 +145,111 @@ describe("agent workflow", () => {
     const second = await turn(srv, "two hundred", first.session_id);
     assert.equal(second.session_id, first.session_id);
     assert.equal(second.proposal.item_id, "m4");
+  });
+
+  test('"veg dish above 200 rupees": minimum price -> cheapest veg item priced over 200 (m2 Paneer Wrap Rs 220)', async () => {
+    srv.setLlm(
+      scriptedLlm([
+        tool("search_menu", { diet: "veg", min_price_inr: 201 }),
+        (m) =>
+          tool("prepare_order", {
+            item_id: lastObservation(m).best_item_id,
+            open_directions_after_confirm: false,
+          }),
+        say("Prepared Paneer Wrap."),
+      ]),
+    );
+    const out = await turn(srv, "I want a veg dish above 200 rupees");
+    assert.equal(out.proposal.item_id, "m2");
+    assert.equal(out.proposal.total, 220);
+    assert.equal(out.proposal.constraints.min_price, 201);
+  });
+
+  test("minimum + maximum together: veg between 200 and 300 -> m2", async () => {
+    srv.setLlm(
+      scriptedLlm([
+        tool("search_menu", {
+          diet: "veg",
+          min_price_inr: 200,
+          max_price_inr: 300,
+        }),
+        (m) => say(lastObservation(m).best_item_id),
+      ]),
+    );
+    const out = await turn(srv, "veg food between 200 and 300 rupees");
+    assert.equal(out.reply, "m2");
+  });
+
+  test("non-veg above 200: nothing matches (only m5 at Rs 190)", async () => {
+    const llm = srv.setLlm(
+      scriptedLlm([
+        tool("search_menu", { diet: "non_veg", min_price_inr: 201 }),
+        say("none"),
+      ]),
+    );
+    await turn(srv, "show me non veg above 200 rupees");
+    const obs = lastObservation(llm.calls[1].messages);
+    assert.equal(obs.best_item_id, null);
+    assert.equal(obs.excluded_counts.under_minimum, 1);
+  });
+
+  test('model misreads "below 200" as a minimum: code corrects it to a maximum (non-veg -> m5 Rs 190)', async () => {
+    srv.setLlm(
+      scriptedLlm([
+        tool("search_menu", { diet: "non_veg", min_price_inr: 200 }), // wrong direction
+        (m) =>
+          tool("prepare_order", {
+            item_id: lastObservation(m).best_item_id,
+            open_directions_after_confirm: false,
+          }),
+        say("ok"),
+      ]),
+    );
+    const out = await turn(srv, "show me non veg dish below 200 rupees");
+    assert.equal(out.proposal.item_id, "m5");
+    assert.match(out.activity[0].decision, /treated the number as a maximum/);
+  });
+
+  test('model misreads "above 200" as a maximum: code corrects it to a minimum of 201 (veg -> m2)', async () => {
+    srv.setLlm(
+      scriptedLlm([
+        tool("search_menu", { diet: "veg", max_price_inr: 200 }), // wrong direction
+        (m) =>
+          tool("prepare_order", {
+            item_id: lastObservation(m).best_item_id,
+            open_directions_after_confirm: false,
+          }),
+        say("ok"),
+      ]),
+    );
+    const out = await turn(srv, "veg dish above 200 rupees");
+    assert.equal(out.proposal.item_id, "m2");
+  });
+
+  test("an invented minimum is rejected, and min above max is rejected", async () => {
+    let llm = srv.setLlm(
+      scriptedLlm([
+        tool("search_menu", { diet: "veg", min_price_inr: 250 }),
+        say("ask"),
+      ]),
+    );
+    await turn(srv, "veg lunch please");
+    assert.equal(
+      lastObservation(llm.calls[1].messages).error,
+      "missing_user_constraint",
+    );
+    llm = srv.setLlm(
+      scriptedLlm([
+        tool("search_menu", {
+          diet: "veg",
+          min_price_inr: 300,
+          max_price_inr: 200,
+        }),
+        say("ask"),
+      ]),
+    );
+    await turn(srv, "veg between 300 and 200");
+    assert.equal(lastObservation(llm.calls[1].messages).error, "invalid_range");
   });
 
   test("prepare_order is refused for an item that is not the best match, or without a search", async () => {
@@ -461,6 +567,17 @@ describe("grounding helpers", () => {
         "veg lunch under 200 and show me how to get there",
       ),
     );
+  });
+  test("priceDirection", () => {
+    assert.equal(priceDirection("veg dish below 200 rupees"), "max");
+    assert.equal(
+      priceDirection("cheapest veg lunch for no more than 200 rupees"),
+      "max",
+    );
+    assert.equal(priceDirection("non veg above 200"), "min");
+    assert.equal(priceDirection("at least 250"), "min");
+    assert.equal(priceDirection("between 200 and 300"), "both");
+    assert.equal(priceDirection("veg lunch"), null);
   });
   test("mentionsExternalService", () => {
     assert.equal(mentionsExternalService("order this on swiggy"), "swiggy");

@@ -1,19 +1,10 @@
 // Bounded agent loop: the LLM interprets the user's goal and picks allowlisted tools; code
 // validates every call, enforces limits, and records an observable trace.
-import { nowIso } from "../db.js";
-import {
-  newId,
-  startRun,
-  logToolCall,
-  finishRun,
-  getRunTrace,
-} from "../trace.js";
-import { getPendingProposal, getLastOrder } from "../orders.js";
-import { toolSpecs, executeTool } from "./tools.js";
-import {
-  mentionsExternalService,
-  wantsLastOrderDirections,
-} from "./grounding.js";
+import { nowIso } from '../db.js';
+import { newId, startRun, logToolCall, finishRun, getRunTrace } from '../trace.js';
+import { getPendingProposal, getLastOrder } from '../orders.js';
+import { toolSpecs, executeTool } from './tools.js';
+import { mentionsExternalService, wantsLastOrderDirections } from './grounding.js';
 
 export const LIMITS = {
   maxModelCalls: 6, // model round-trips per user turn
@@ -27,7 +18,7 @@ const SYSTEM_PROMPT = `You are Pocket Operator, a voice assistant in a mobile ap
 
 Rules:
 - Use tools for every fact about meals, prices, availability and orders. Never state a price, item or order you did not get from a tool result in this conversation.
-- To find a meal you need BOTH a budget (INR, inclusive) and a dietary preference (veg, non_veg, or "any" only if the user explicitly has no preference). If either is missing, ask ONE short follow-up question. Never guess them.
+- To find a meal you need BOTH a price limit and a dietary preference (veg, non_veg, or "any" only if the user explicitly has no preference). The price limit can be a maximum ("under 200" -> max_price_inr 200), a minimum ("above 200" -> min_price_inr 201, "at least 200" -> 200), or both. If either is missing, ask ONE short follow-up question. Never guess them.
 - Selection is done by the tools: propose best_item_id from the latest search_menu result. One meal, quantity 1, pickup only. Prices are all-inclusive; there is no tax, delivery or payment.
 - When search_menu returns a best_item_id, call prepare_order in the SAME turn. Do not ask "shall I prepare it?": the review card with Confirm/Cancel is the user's approval step.
 - If search finds nothing, say so briefly and suggest raising the budget or changing the preference.
@@ -41,50 +32,38 @@ Rules:
 function stateNote(db, session, device_id) {
   const pending = getPendingProposal(db, session.id);
   const last = getLastOrder(db, device_id);
-  const lines = ["Current app state (from the server):"];
+  const lines = ['Current app state (from the server):'];
   lines.push(
     pending
       ? `- Pending proposal ${pending.id}: ${pending.item_name} at ${pending.restaurant_name}, Rs ${pending.total}, waiting for the user's tap.`
-      : "- No pending proposal.",
+      : '- No pending proposal.'
   );
-  lines.push(
-    last
-      ? `- Last confirmed order: ${last.id} (${last.item_name}, ${last.restaurant_name}).`
-      : "- No confirmed orders yet.",
-  );
-  return lines.join("\n");
+  lines.push(last ? `- Last confirmed order: ${last.id} (${last.item_name}, ${last.restaurant_name}).` : '- No confirmed orders yet.');
+  return lines.join('\n');
 }
 
 export function getOrCreateSession(db, { session_id, device_id }) {
   if (session_id) {
-    const row = db
-      .prepare("SELECT * FROM sessions WHERE id = ? AND device_id = ?")
-      .get(session_id, device_id);
+    const row = db.prepare('SELECT * FROM sessions WHERE id = ? AND device_id = ?').get(session_id, device_id);
     if (row) return { ...row, history: JSON.parse(row.history_json) };
   }
-  const id = newId("ses");
+  const id = newId('ses');
   const ts = nowIso();
-  db.prepare(
-    "INSERT INTO sessions (id, device_id, history_json, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
-  ).run(id, device_id, "[]", ts, ts);
+  db.prepare('INSERT INTO sessions (id, device_id, history_json, created_at, updated_at) VALUES (?, ?, ?, ?, ?)').run(id, device_id, '[]', ts, ts);
   return { id, device_id, history: [] };
 }
 
 function saveHistory(db, session, userText, reply) {
-  const history = [
-    ...session.history,
-    { role: "user", content: userText },
-    { role: "assistant", content: reply },
-  ].slice(-LIMITS.historyMessages * 2);
-  db.prepare(
-    "UPDATE sessions SET history_json = ?, updated_at = ? WHERE id = ?",
-  ).run(JSON.stringify(history), nowIso(), session.id);
+  const history = [...session.history, { role: 'user', content: userText }, { role: 'assistant', content: reply }].slice(
+    -LIMITS.historyMessages * 2
+  );
+  db.prepare('UPDATE sessions SET history_json = ?, updated_at = ? WHERE id = ?').run(JSON.stringify(history), nowIso(), session.id);
 }
 
 function parseArgs(raw) {
-  if (raw && typeof raw === "object") return { ok: true, value: raw };
+  if (raw && typeof raw === 'object') return { ok: true, value: raw };
   try {
-    return { ok: true, value: JSON.parse(raw || "{}") };
+    return { ok: true, value: JSON.parse(raw || '{}') };
   } catch {
     return { ok: false };
   }
@@ -97,23 +76,8 @@ function parseArgs(raw) {
 export async function runAgentTurn({ db, llm, device_id, session_id, text }) {
   const session = getOrCreateSession(db, { session_id, device_id });
   const userText = text.trim();
-  const run = startRun(db, {
-    kind: "agent",
-    session_id: session.id,
-    device_id,
-    user_text: userText,
-    model: llm?.model ?? null,
-  });
-  const ctx = {
-    db,
-    run,
-    session,
-    device_id,
-    userTexts: [
-      ...session.history.filter((m) => m.role === "user").map((m) => m.content),
-      userText,
-    ],
-  };
+  const run = startRun(db, { kind: 'agent', session_id: session.id, device_id, user_text: userText, model: llm?.model ?? null });
+  const ctx = { db, run, session, device_id, userTexts: [...session.history.filter((m) => m.role === 'user').map((m) => m.content), userText] };
   const usage = { prompt_tokens: 0, completion_tokens: 0 };
   let modelCalls = 0;
   let toolCalls = 0;
@@ -121,49 +85,22 @@ export async function runAgentTurn({ db, llm, device_id, session_id, text }) {
   // Deterministic guarantee: if the user asked for directions to their last order and the model
   // did not request the phone action, the code does it (both steps are logged in the trace).
   const ensureLastOrderDirections = (reply) => {
-    if (ctx.deviceAction || ctx.proposal || !wantsLastOrderDirections(userText))
-      return reply;
+    if (ctx.deviceAction || ctx.proposal || !wantsLastOrderDirections(userText)) return reply;
     const started_at = nowIso();
     if (!ctx.lastOrderId) {
-      const r = executeTool(ctx, "get_last_order", {});
-      logToolCall(db, run, {
-        tool: "get_last_order",
-        input: {},
-        status: r.status,
-        decision: `${r.decision} (code: directions intent)`,
-        outcome: r.observation,
-        started_at,
-      });
-      if (r.status !== "ok")
-        return "You have no saved sandbox order yet, so there is nothing to show directions for. Ask me to find a meal first.";
+      const r = executeTool(ctx, 'get_last_order', {});
+      logToolCall(db, run, { tool: 'get_last_order', input: {}, status: r.status, decision: `${r.decision} (code: directions intent)`, outcome: r.observation, started_at });
+      if (r.status !== 'ok') return 'You have no saved sandbox order yet, so there is nothing to show directions for. Ask me to find a meal first.';
     }
-    const d = executeTool(ctx, "open_directions", {
-      order_id: ctx.lastOrderId,
-    });
-    logToolCall(db, run, {
-      tool: "open_directions",
-      input: { order_id: ctx.lastOrderId },
-      status: d.status,
-      decision: `${d.decision} (code: directions intent)`,
-      outcome: d.observation,
-      started_at,
-    });
-    return d.status === "ok"
-      ? `Opening Maps for ${ctx.deviceAction.label}, the restaurant of your last order.`
-      : reply;
+    const d = executeTool(ctx, 'open_directions', { order_id: ctx.lastOrderId });
+    logToolCall(db, run, { tool: 'open_directions', input: { order_id: ctx.lastOrderId }, status: d.status, decision: `${d.decision} (code: directions intent)`, outcome: d.observation, started_at });
+    return d.status === 'ok' ? `Opening Maps for ${ctx.deviceAction.label}, the restaurant of your last order.` : reply;
   };
 
   const finish = (status, reply, { error = null, retryable = false } = {}) => {
-    if (status === "completed" || status === "iteration_limit")
-      reply = ensureLastOrderDirections(reply);
-    finishRun(db, run, {
-      status,
-      summary: reply,
-      error,
-      iterations: modelCalls,
-      usage,
-    });
-    if (status !== "llm_error") saveHistory(db, session, userText, reply);
+    if (status === 'completed' || status === 'iteration_limit') reply = ensureLastOrderDirections(reply);
+    finishRun(db, run, { status, summary: reply, error, iterations: modelCalls, usage });
+    if (status !== 'llm_error') saveHistory(db, session, userText, reply);
     const trace = getRunTrace(db, run.id);
     return {
       run_id: run.id,
@@ -173,11 +110,7 @@ export async function runAgentTurn({ db, llm, device_id, session_id, text }) {
       retryable,
       proposal: ctx.proposal ?? null,
       device_action: ctx.deviceAction ?? null,
-      activity: trace.steps.map((s) => ({
-        tool: s.tool,
-        status: s.status,
-        decision: s.decision,
-      })),
+      activity: trace.steps.map((s) => ({ tool: s.tool, status: s.status, decision: s.decision })),
       latency_ms: trace.latency_ms,
     };
   };
@@ -187,32 +120,25 @@ export async function runAgentTurn({ db, llm, device_id, session_id, text }) {
   if (service) {
     const reply = `I can't order on ${service} or any real service; this is a sandbox demo. I can find a meal from the demo catalogue and prepare a fictional pickup order instead. What's your budget and dietary preference?`;
     logToolCall(db, run, {
-      tool: "policy_guard",
+      tool: 'policy_guard',
       input: { matched: service },
-      status: "rejected",
+      status: 'rejected',
       decision: `Unsupported external service "${service}": explained limit, offered sandbox workflow`,
     });
-    return finish("completed", reply);
+    return finish('completed', reply);
   }
 
   if (!llm) {
-    return finish(
-      "llm_unavailable",
-      "The assistant model is not configured on the server. Set LLM_BASE_URL, LLM_MODEL and LLM_API_KEY, then retry.",
-      {
-        error: "no LLM configured",
-        retryable: true,
-      },
-    );
+    return finish('llm_unavailable', 'The assistant model is not configured on the server. Set LLM_BASE_URL, LLM_MODEL and LLM_API_KEY, then retry.', {
+      error: 'no LLM configured',
+      retryable: true,
+    });
   }
 
   const messages = [
-    {
-      role: "system",
-      content: `${SYSTEM_PROMPT}\n\n${stateNote(db, session, device_id)}`,
-    },
+    { role: 'system', content: `${SYSTEM_PROMPT}\n\n${stateNote(db, session, device_id)}` },
     ...session.history.slice(-LIMITS.historyMessages),
-    { role: "user", content: userText },
+    { role: 'user', content: userText },
   ];
   const tools = toolSpecs();
   const deadline = Date.now() + LIMITS.runDeadlineMs;
@@ -220,11 +146,7 @@ export async function runAgentTurn({ db, llm, device_id, session_id, text }) {
   try {
     while (modelCalls < LIMITS.maxModelCalls) {
       if (Date.now() > deadline) {
-        return finish(
-          "timeout",
-          "That took too long, so I stopped. Please try again.",
-          { error: "run deadline exceeded", retryable: true },
-        );
+        return finish('timeout', 'That took too long, so I stopped. Please try again.', { error: 'run deadline exceeded', retryable: true });
       }
       modelCalls++;
       const out = await llm.chat(messages, tools);
@@ -232,26 +154,20 @@ export async function runAgentTurn({ db, llm, device_id, session_id, text }) {
       usage.completion_tokens += out.usage?.completion_tokens ?? 0;
 
       if (!out.tool_calls?.length) {
-        const reply = (out.content ?? "").trim() || fallbackReply(ctx);
-        return finish("completed", reply);
+        const reply = (out.content ?? '').trim() || fallbackReply(ctx);
+        return finish('completed', reply);
       }
 
       messages.push({
-        role: "assistant",
+        role: 'assistant',
         content: out.content ?? null,
         tool_calls: out.tool_calls.map((tc, i) => {
           tc.id = tc.id || `call_${modelCalls}_${i}`;
           return {
             ...(tc.extra ?? {}),
             id: tc.id,
-            type: "function",
-            function: {
-              name: tc.name,
-              arguments:
-                typeof tc.arguments === "string"
-                  ? tc.arguments
-                  : JSON.stringify(tc.arguments),
-            },
+            type: 'function',
+            function: { name: tc.name, arguments: typeof tc.arguments === 'string' ? tc.arguments : JSON.stringify(tc.arguments) },
           };
         }),
       });
@@ -260,56 +176,32 @@ export async function runAgentTurn({ db, llm, device_id, session_id, text }) {
         const started_at = nowIso();
         let result;
         if (++toolCalls > LIMITS.maxToolCalls) {
-          result = {
-            status: "rejected",
-            decision: "Tool call limit reached",
-            observation: { ok: false, error: "tool_limit_reached" },
-          };
+          result = { status: 'rejected', decision: 'Tool call limit reached', observation: { ok: false, error: 'tool_limit_reached' } };
         } else {
           const parsed = parseArgs(tc.arguments);
           result = parsed.ok
             ? executeTool(ctx, tc.name, parsed.value)
-            : {
-                status: "rejected",
-                decision: `Malformed JSON arguments for ${tc.name}`,
-                observation: { ok: false, error: "invalid_json" },
-              };
+            : { status: 'rejected', decision: `Malformed JSON arguments for ${tc.name}`, observation: { ok: false, error: 'invalid_json' } };
         }
         logToolCall(db, run, {
           tool: tc.name,
-          input:
-            result.input ??
-            (parseArgs(tc.arguments).ok
-              ? parseArgs(tc.arguments).value
-              : String(tc.arguments).slice(0, 200)),
+          input: result.input ?? (parseArgs(tc.arguments).ok ? parseArgs(tc.arguments).value : String(tc.arguments).slice(0, 200)),
           status: result.status,
           decision: result.decision,
           outcome: result.observation,
           started_at,
         });
-        messages.push({
-          role: "tool",
-          tool_call_id: tc.id,
-          content: JSON.stringify(result.observation),
-        });
+        messages.push({ role: 'tool', tool_call_id: tc.id, content: JSON.stringify(result.observation) });
       }
     }
-    return finish("iteration_limit", fallbackReply(ctx, true), {
-      error: "model call limit reached",
-    });
+    return finish('iteration_limit', fallbackReply(ctx, true), { error: 'model call limit reached' });
   } catch (err) {
     // Model/network failure. Anything already saved (e.g. a proposal) stays valid on the server.
-    const extra = ctx.proposal
-      ? " The proposal shown below is still valid."
-      : "";
-    return finish(
-      "llm_error",
-      `I couldn't reach the assistant model just now.${extra} Your message is kept; tap Retry.`,
-      {
-        error: String(err?.message ?? err).slice(0, 300),
-        retryable: true,
-      },
-    );
+    const extra = ctx.proposal ? ' The proposal shown below is still valid.' : '';
+    return finish('llm_error', `I couldn't reach the assistant model just now.${extra} Your message is kept; tap Retry.`, {
+      error: String(err?.message ?? err).slice(0, 300),
+      retryable: true,
+    });
   }
 }
 
@@ -317,7 +209,5 @@ function fallbackReply(ctx, limited = false) {
   if (ctx.proposal) {
     return `I've prepared ${ctx.proposal.item_name} at ${ctx.proposal.restaurant_name} for Rs ${ctx.proposal.total}. Tap Confirm or Cancel.`;
   }
-  return limited
-    ? "I could not finish that request within my step limit. Please rephrase or try again."
-    : "Sorry, I did not get that. What would you like?";
+  return limited ? 'I could not finish that request within my step limit. Please rephrase or try again.' : 'Sorry, I did not get that. What would you like?';
 }

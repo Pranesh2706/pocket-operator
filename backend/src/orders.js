@@ -32,7 +32,7 @@ function rowToProposal(r) {
     unit_price: r.unit_price,
     total: r.total,
     currency: r.currency,
-    constraints: { diet: r.diet, max_price: r.max_price },
+    constraints: { diet: r.diet, max_price: r.max_price, min_price: r.min_price ?? 0 },
     open_directions_after_confirm: r.open_directions === 1,
     status: r.status,
     status_reason: r.status_reason,
@@ -99,7 +99,7 @@ export function getLastOrder(db, device_id) {
  * Any other pending proposal in the same session is superseded: a changed proposal
  * invalidates the previous one, so its approval can no longer be used.
  */
-function insertProposalTx(db, { session_id, device_id, run_id, item, diet, max_price, open_directions }) {
+function insertProposalTx(db, { session_id, device_id, run_id, item, diet, max_price, min_price = 0, open_directions }) {
   const id = newId('prop');
   const ts = nowIso();
   db.prepare(
@@ -107,8 +107,8 @@ function insertProposalTx(db, { session_id, device_id, run_id, item, diet, max_p
   ).run(id, ts, session_id);
   db.prepare(
     `INSERT INTO proposals (id, session_id, device_id, run_id, item_id, restaurant_id, item_name, restaurant_name, vegetarian,
-       quantity, unit_price, total, currency, diet, max_price, open_directions, status, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)`
+       quantity, unit_price, total, currency, diet, max_price, min_price, open_directions, status, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)`
   ).run(
     id,
     session_id,
@@ -124,6 +124,7 @@ function insertProposalTx(db, { session_id, device_id, run_id, item, diet, max_p
     getMeta(db, 'currency', 'INR'),
     diet,
     max_price,
+    min_price,
     open_directions ? 1 : 0,
     ts,
     ts
@@ -135,16 +136,16 @@ function insertProposalTx(db, { session_id, device_id, run_id, item, diet, max_p
  * Create a proposal for exactly the item the deterministic search selects for these constraints.
  * The caller passes the item id the agent chose; we reject it unless it is still the best match.
  */
-export function createProposal(db, { session_id, device_id, run_id, item_id, diet, max_price, open_directions }) {
+export function createProposal(db, { session_id, device_id, run_id, item_id, diet, max_price, min_price = 0, open_directions }) {
   return tx(db, () => {
-    const { best } = searchMenu(db, { diet, max_price });
+    const { best } = searchMenu(db, { diet, max_price, min_price });
     if (!best) throw new ApiError(409, 'no_match', 'No available item matches these constraints any more.');
     if (best.id !== item_id) {
       throw new ApiError(409, 'not_best_match', `Item ${item_id} is not the cheapest available match; current best is ${best.id}.`, {
         best_item_id: best.id,
       });
     }
-    const id = insertProposalTx(db, { session_id, device_id, run_id, item: best, diet, max_price, open_directions });
+    const id = insertProposalTx(db, { session_id, device_id, run_id, item: best, diet, max_price, min_price, open_directions });
     return getProposal(db, id);
   });
 }
@@ -203,7 +204,7 @@ export function confirmProposal(db, id, { device_id, expected_item_id, expected_
     else if (!dietMatches(item, p.constraints.diet)) reason = `${p.item_name} no longer matches the dietary preference`;
 
     if (reason) {
-      const { best } = searchMenu(db, { diet: p.constraints.diet, max_price: p.constraints.max_price });
+      const { best } = searchMenu(db, { diet: p.constraints.diet, max_price: p.constraints.max_price, min_price: p.constraints.min_price });
       let newId = null;
       if (best) {
         newId = insertProposalTx(db, {
@@ -213,6 +214,7 @@ export function confirmProposal(db, id, { device_id, expected_item_id, expected_
           item: best,
           diet: p.constraints.diet,
           max_price: p.constraints.max_price,
+          min_price: p.constraints.min_price,
           open_directions: p.open_directions_after_confirm,
         });
       }

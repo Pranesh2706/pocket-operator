@@ -63,6 +63,7 @@ CREATE TABLE IF NOT EXISTS proposals (
   currency TEXT NOT NULL,
   diet TEXT NOT NULL,
   max_price INTEGER NOT NULL,
+  min_price INTEGER NOT NULL DEFAULT 0,
   open_directions INTEGER NOT NULL DEFAULT 0,
   status TEXT NOT NULL CHECK (status IN ('pending','confirmed','cancelled','superseded','stale')),
   status_reason TEXT,
@@ -134,7 +135,14 @@ export function openDb(dbPath = DEFAULT_DB_PATH) {
   if (dbPath !== ':memory:') fs.mkdirSync(path.dirname(dbPath), { recursive: true });
   const db = new DatabaseSync(dbPath);
   db.exec(SCHEMA);
+  migrate(db);
   return db;
+}
+
+/** Additive migrations for databases created by an earlier version. */
+function migrate(db) {
+  const cols = db.prepare('PRAGMA table_info(proposals)').all().map((c) => c.name);
+  if (!cols.includes('min_price')) db.exec('ALTER TABLE proposals ADD COLUMN min_price INTEGER NOT NULL DEFAULT 0');
 }
 
 /** Run fn inside BEGIN IMMEDIATE ... COMMIT, rolling back on any throw. */
