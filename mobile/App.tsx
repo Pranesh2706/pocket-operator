@@ -1,6 +1,6 @@
 // Pocket Operator: voice/text assistant that prepares fictional sandbox pickup orders.
 // Screen sections: Assistant (chat + review card), History (saved orders), Activity (run traces), Settings.
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   AppState,
@@ -11,36 +11,65 @@ import {
   ScrollView,
   Share,
   StatusBar,
+  StyleSheet,
   Text,
   TextInput,
   View,
-} from 'react-native';
-import { StatusBar as ExpoStatusBar } from 'expo-status-bar';
-import * as Crypto from 'expo-crypto';
-import { api, isProposalChanged } from './src/api';
-import { openDirections } from './src/maps';
-import { DEFAULT_API_URL, loadState, PersistedState, saveState } from './src/storage';
-import { useVoice } from './src/useVoice';
-import { Bubble, Button, C, OrderRow, ProposalCard, RunCard, StatusChips, rupees } from './src/components';
-import type { ActionStatus, ChatMessage, DeviceAction, Order, Proposal, RunTrace } from './src/types';
+} from "react-native";
+import { StatusBar as ExpoStatusBar } from "expo-status-bar";
+import * as Crypto from "expo-crypto";
+import { api, isProposalChanged } from "./src/api";
+import { openDirections } from "./src/maps";
+import {
+  DEFAULT_API_URL,
+  loadState,
+  PersistedState,
+  saveState,
+} from "./src/storage";
+import { useVoice } from "./src/useVoice";
+import {
+  Bubble,
+  Button,
+  C,
+  Header,
+  MicButton,
+  OrderRow,
+  ProposalCard,
+  RunCard,
+  StatusChips,
+  TabBar,
+  TypingIndicator,
+  Welcome,
+  rupees,
+} from "./src/components";
+import type { TabKey } from "./src/components";
+import type {
+  ActionStatus,
+  ChatMessage,
+  DeviceAction,
+  Order,
+  Proposal,
+  RunTrace,
+} from "./src/types";
 
-type Tab = 'assistant' | 'history' | 'activity' | 'settings';
+type Tab = TabKey;
 
 const msgId = () => Crypto.randomUUID();
 
 export default function App() {
   const [st, setSt] = useState<PersistedState | null>(null);
   const stRef = useRef<PersistedState | null>(null);
-  const [tab, setTab] = useState<Tab>('assistant');
-  const [input, setInput] = useState('');
+  const [tab, setTab] = useState<Tab>("assistant");
+  const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const [runs, setRuns] = useState<RunTrace[]>([]);
   const [loadingList, setLoadingList] = useState(false);
   const [listError, setListError] = useState<string | null>(null);
-  const [urlDraft, setUrlDraft] = useState('');
+  const [urlDraft, setUrlDraft] = useState("");
   const [health, setHealth] = useState<string | null>(null);
+  const [online, setOnline] = useState<boolean | null>(null);
   const confirmLock = useRef(false);
   const chatRef = useRef<FlatList<ChatMessage>>(null);
 
@@ -56,8 +85,12 @@ export default function App() {
   }, []);
 
   const addMsg = useCallback(
-    (m: Omit<ChatMessage, 'id'>) => update((s) => ({ ...s, messages: [...s.messages, { id: msgId(), ...m }] })),
-    [update]
+    (m: Omit<ChatMessage, "id">) =>
+      update((s) => ({
+        ...s,
+        messages: [...s.messages, { id: msgId(), ...m }],
+      })),
+    [update],
   );
 
   useEffect(() => {
@@ -74,11 +107,18 @@ export default function App() {
     async (a: DeviceAction, prefix: ActionStatus[] = []) => {
       const res = await openDirections(a);
       update((s) => ({ ...s, statuses: [...prefix, res.status] }));
-      addMsg({ role: 'system', text: res.status.text });
+      addMsg({ role: "system", text: res.status.text });
       const cur = stRef.current;
-      if (cur) api.reportDeviceAction(cur.apiUrl, cur.deviceId, a.order_id, res.outcome, res.detail); // best effort, never creates orders
+      if (cur)
+        api.reportDeviceAction(
+          cur.apiUrl,
+          cur.deviceId,
+          a.order_id,
+          res.outcome,
+          res.detail,
+        ); // best effort, never creates orders
     },
-    [update, addMsg]
+    [update, addMsg],
   );
 
   // ---------- assistant turn ----------
@@ -88,12 +128,17 @@ export default function App() {
       const text = raw.trim();
       if (!s || !text || sending) return;
       setSending(true);
-      setInput('');
-      addMsg({ role: 'user', text });
+      setInput("");
+      addMsg({ role: "user", text });
       const r = await api.turn(s.apiUrl, s.deviceId, s.sessionId, text);
       setSending(false);
+      setOnline(r.ok || r.kind === "http");
       if (!r.ok) {
-        addMsg({ role: 'system', text: `${r.message} Your message was not processed.`, retryText: text });
+        addMsg({
+          role: "system",
+          text: `${r.message} Your message was not processed.`,
+          retryText: text,
+        });
         return;
       }
       const t = r.data;
@@ -106,7 +151,7 @@ export default function App() {
         statuses: t.proposal ? [] : x.statuses,
       }));
       addMsg({
-        role: 'assistant',
+        role: "assistant",
         text: t.reply,
         activity: t.activity,
         latencyMs: t.latency_ms,
@@ -114,14 +159,14 @@ export default function App() {
       });
       if (t.device_action) await runDeviceAction(t.device_action);
     },
-    [sending, addMsg, update, runDeviceAction]
+    [sending, addMsg, update, runDeviceAction],
   );
 
   // ---------- confirm / cancel ----------
   const confirm = useCallback(async () => {
     const s = stRef.current;
     const p = s?.proposal;
-    if (!s || !p || p.status !== 'pending' || confirmLock.current) return; // UI guard only; the server enforces uniqueness
+    if (!s || !p || p.status !== "pending" || confirmLock.current) return; // UI guard only; the server enforces uniqueness
     confirmLock.current = true;
     setConfirming(true);
     update((x) => ({ ...x, confirmInFlight: p.id }));
@@ -132,7 +177,7 @@ export default function App() {
     if (r.ok) {
       const { order, proposal, device_action, outcome } = r.data;
       const saved: ActionStatus = {
-        kind: 'order_saved',
+        kind: "order_saved",
         text: `Sandbox order saved: ${order.item_name} from ${order.restaurant_name}, ${rupees(order.total)}. Fictional pickup, nothing was paid.`,
       };
       update((x) => ({
@@ -142,27 +187,47 @@ export default function App() {
         statuses: [saved],
         orders: [order, ...x.orders.filter((o) => o.id !== order.id)],
       }));
-      addMsg({ role: 'system', text: outcome === 'replayed' ? `${saved.text} (Already saved earlier; no duplicate created.)` : saved.text });
+      addMsg({
+        role: "system",
+        text:
+          outcome === "replayed"
+            ? `${saved.text} (Already saved earlier; no duplicate created.)`
+            : saved.text,
+      });
       if (device_action) await runDeviceAction(device_action, [saved]);
       return;
     }
     if (isProposalChanged(r)) {
       const b = r.body;
-      update((x) => ({ ...x, proposal: b.new_proposal ?? b.proposal, confirmInFlight: null, statuses: [] }));
+      update((x) => ({
+        ...x,
+        proposal: b.new_proposal ?? b.proposal,
+        confirmInFlight: null,
+        statuses: [],
+      }));
       addMsg({
-        role: 'assistant',
-        text: b.new_proposal ? `${b.message} Nothing was ordered. Please review and confirm again.` : `${b.message} Nothing was ordered.`,
+        role: "assistant",
+        text: b.new_proposal
+          ? `${b.message} Nothing was ordered. Please review and confirm again.`
+          : `${b.message} Nothing was ordered.`,
       });
       return;
     }
-    if (r.kind === 'network') {
+    if (r.kind === "network") {
       // Keep confirmInFlight: the save may have succeeded. Retrying is safe (server returns the same order).
-      addMsg({ role: 'system', text: `${r.message} Your order may or may not have been saved. Tap “Retry confirm”; it will not create a duplicate.` });
+      addMsg({
+        role: "system",
+        text: `${r.message} Your order may or may not have been saved. Tap “Retry confirm”; it will not create a duplicate.`,
+      });
       return;
     }
     // proposal_not_pending / mismatch / not found: re-sync with the server's view.
-    update((x) => ({ ...x, confirmInFlight: null, proposal: r.body?.proposal ?? x.proposal }));
-    addMsg({ role: 'system', text: `${r.message} No order was created.` });
+    update((x) => ({
+      ...x,
+      confirmInFlight: null,
+      proposal: r.body?.proposal ?? x.proposal,
+    }));
+    addMsg({ role: "system", text: `${r.message} No order was created.` });
   }, [update, addMsg, runDeviceAction]);
 
   const cancel = useCallback(async () => {
@@ -173,13 +238,24 @@ export default function App() {
     const r = await api.cancel(s.apiUrl, s.deviceId, p.id);
     setCancelling(false);
     if (r.ok) {
-      update((x) => ({ ...x, proposal: r.data.proposal, confirmInFlight: null, statuses: [] }));
-      addMsg({ role: 'system', text: 'Proposal cancelled. No order was placed.' });
-    } else if (r.kind === 'network') {
-      addMsg({ role: 'system', text: `${r.message} The proposal was not cancelled yet; try again.` });
+      update((x) => ({
+        ...x,
+        proposal: r.data.proposal,
+        confirmInFlight: null,
+        statuses: [],
+      }));
+      addMsg({
+        role: "system",
+        text: "Proposal cancelled. No order was placed.",
+      });
+    } else if (r.kind === "network") {
+      addMsg({
+        role: "system",
+        text: `${r.message} The proposal was not cancelled yet; try again.`,
+      });
     } else {
       update((x) => ({ ...x, proposal: r.body?.proposal ?? x.proposal }));
-      addMsg({ role: 'system', text: r.message });
+      addMsg({ role: "system", text: r.message });
     }
   }, [update, addMsg]);
 
@@ -187,26 +263,43 @@ export default function App() {
   const syncProposal = useCallback(async () => {
     const s = stRef.current;
     const p = s?.proposal;
-    if (!s || !p || (p.status !== 'pending' && !s.confirmInFlight)) return;
+    if (!s || !p || (p.status !== "pending" && !s.confirmInFlight)) return;
     const r = await api.getProposal(s.apiUrl, p.id);
     if (!r.ok) return; // offline: keep the cached card; actions will report errors
     const { proposal, replacement, order_id } = r.data;
-    if (proposal.status === 'confirmed' && order_id) {
+    if (proposal.status === "confirmed" && order_id) {
       // A confirm whose response was lost actually succeeded.
       const o = await api.orders(s.apiUrl, s.deviceId);
-      const order = o.ok ? o.data.orders.find((x) => x.id === order_id) : undefined;
+      const order = o.ok
+        ? o.data.orders.find((x) => x.id === order_id)
+        : undefined;
       update((x) => ({
         ...x,
         proposal,
         confirmInFlight: null,
         orders: o.ok ? o.data.orders : x.orders,
-        statuses: order ? [{ kind: 'order_saved', text: `Sandbox order saved: ${order.item_name}, ${rupees(order.total)}.` }] : x.statuses,
+        statuses: order
+          ? [
+              {
+                kind: "order_saved",
+                text: `Sandbox order saved: ${order.item_name}, ${rupees(order.total)}.`,
+              },
+            ]
+          : x.statuses,
       }));
-    } else if (proposal.status === 'stale' && replacement) {
+    } else if (proposal.status === "stale" && replacement) {
       update((x) => ({ ...x, proposal: replacement, confirmInFlight: null }));
-      addMsg({ role: 'assistant', text: `${proposal.status_reason}. Updated proposal: ${replacement.item_name} for ${rupees(replacement.total)}. Please review.` });
+      addMsg({
+        role: "assistant",
+        text: `${proposal.status_reason}. Updated proposal: ${replacement.item_name} for ${rupees(replacement.total)}. Please review.`,
+      });
     } else {
-      update((x) => ({ ...x, proposal, confirmInFlight: proposal.status === 'pending' ? x.confirmInFlight : null }));
+      update((x) => ({
+        ...x,
+        proposal,
+        confirmInFlight:
+          proposal.status === "pending" ? x.confirmInFlight : null,
+      }));
     }
   }, [update, addMsg]);
 
@@ -236,17 +329,28 @@ export default function App() {
 
   useEffect(() => {
     if (!st) return;
-    if (tab === 'history') loadOrders();
-    if (tab === 'activity') loadRuns();
+    if (tab === "history") loadOrders();
+    if (tab === "activity") loadRuns();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab, !!st]);
 
+  const ping = useCallback(async () => {
+    const s = stRef.current;
+    if (!s) return;
+    const r = await api.health(s.apiUrl);
+    setOnline(r.ok);
+  }, []);
+
   useEffect(() => {
-    if (st) syncProposal();
-    const sub = AppState.addEventListener('change', (a) => {
-      if (a === 'active') {
+    if (st) {
+      syncProposal();
+      ping();
+    }
+    const sub = AppState.addEventListener("change", (a) => {
+      if (a === "active") {
         syncProposal();
-        if (tab === 'history') loadOrders();
+        ping();
+        if (tab === "history") loadOrders();
       }
     });
     return () => sub.remove();
@@ -254,218 +358,470 @@ export default function App() {
   }, [!!st, tab]);
 
   // ---------- voice ----------
-  const voice = useVoice(st?.language ?? 'en-IN', (t) => setInput((prev) => (prev ? `${prev} ${t}` : t)));
+  const voice = useVoice(st?.language ?? "en-IN", (t) =>
+    setInput((prev) => (prev ? `${prev} ${t}` : t)),
+  );
 
   const directionsForOrder = useCallback(
-    (o: Order) => runDeviceAction({ type: 'open_maps', order_id: o.id, latitude: o.latitude, longitude: o.longitude, label: o.restaurant_name }),
-    [runDeviceAction]
+    (o: Order) =>
+      runDeviceAction({
+        type: "open_maps",
+        order_id: o.id,
+        latitude: o.latitude,
+        longitude: o.longitude,
+        label: o.restaurant_name,
+      }),
+    [runDeviceAction],
   );
 
   if (!st) {
     return (
-      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: C.bg }}>
+      <View
+        style={{
+          flex: 1,
+          alignItems: "center",
+          justifyContent: "center",
+          backgroundColor: C.bg,
+        }}
+      >
         <ActivityIndicator />
       </View>
     );
   }
 
-  const topPad = Platform.OS === 'android' ? (StatusBar.currentHeight ?? 24) : 44;
+  const topPad =
+    Platform.OS === "android" ? (StatusBar.currentHeight ?? 24) : 44;
+  const listening = voice.state !== "idle";
 
   return (
-    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: C.bg }} behavior="padding">
-      <ExpoStatusBar style="dark" />
-      <View style={{ paddingTop: topPad + 8, paddingHorizontal: 16, paddingBottom: 8, backgroundColor: C.card, borderBottomWidth: 1, borderBottomColor: C.line }}>
-        <Text style={{ fontSize: 20, fontWeight: '800', color: C.ink }}>Pocket Operator</Text>
-        <Text style={{ fontSize: 12, color: C.muted }}>Sandbox demo · fictional restaurants · no real orders or payments</Text>
-        <View style={{ flexDirection: 'row', gap: 6, marginTop: 10 }} accessibilityRole="tablist">
-          {(['assistant', 'history', 'activity', 'settings'] as Tab[]).map((t) => (
-            <Pressable
-              key={t}
-              accessibilityRole="tab"
-              accessibilityState={{ selected: tab === t }}
-              onPress={() => setTab(t)}
-              style={{ paddingVertical: 8, paddingHorizontal: 12, borderRadius: 999, backgroundColor: tab === t ? C.accent : C.bg }}
-            >
-              <Text style={{ color: tab === t ? '#fff' : C.ink, fontWeight: '600', fontSize: 13 }}>{t[0].toUpperCase() + t.slice(1)}</Text>
-            </Pressable>
-          ))}
-        </View>
-      </View>
+    <View style={{ flex: 1, backgroundColor: C.bg }}>
+      <ExpoStatusBar style="light" />
+      <Header topPad={topPad} online={online} />
 
-      {tab === 'assistant' && (
-        <View style={{ flex: 1 }}>
-          <FlatList
-            ref={chatRef}
-            style={{ flex: 1 }}
-            contentContainerStyle={{ padding: 12, gap: 2 }}
-            data={st.messages}
-            keyExtractor={(m) => m.id}
-            onContentSizeChange={() => chatRef.current?.scrollToEnd({ animated: true })}
-            ListEmptyComponent={
-              <View style={{ padding: 16 }}>
-                <Text style={{ color: C.muted, fontSize: 15, lineHeight: 22 }}>
-                  Hold the mic and say, or type:{'\n'}“Find me the cheapest vegetarian lunch for no more than 200 rupees. Prepare an order and then show me how to get there.”
-                </Text>
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding">
+        {tab === "assistant" && (
+          <View style={{ flex: 1 }}>
+            <FlatList
+              ref={chatRef}
+              style={{ flex: 1 }}
+              contentContainerStyle={{ padding: 14, paddingBottom: 8 }}
+              data={st.messages}
+              keyExtractor={(m) => m.id}
+              keyboardShouldPersistTaps="handled"
+              onContentSizeChange={() =>
+                chatRef.current?.scrollToEnd({ animated: true })
+              }
+              ListEmptyComponent={<Welcome onPick={(t) => setInput(t)} />}
+              renderItem={({ item }) => (
+                <Bubble m={item} onRetry={send} busy={sending} />
+              )}
+              ListFooterComponent={
+                <View style={{ gap: 12, marginTop: 6 }}>
+                  {sending ? (
+                    <TypingIndicator text="Searching the sandbox menu…" />
+                  ) : null}
+                  {st.proposal ? (
+                    <ProposalCard
+                      proposal={st.proposal}
+                      confirmInFlight={st.confirmInFlight === st.proposal.id}
+                      confirming={confirming}
+                      cancelling={cancelling}
+                      onConfirm={confirm}
+                      onCancel={cancel}
+                    />
+                  ) : null}
+                  <StatusChips statuses={st.statuses} />
+                </View>
+              }
+            />
+
+            {voice.notice ? (
+              <View style={styles.notice}>
+                <Text style={{ fontSize: 16 }}>🎙️</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: C.warn, fontSize: 13, lineHeight: 19 }}>
+                    {voice.notice.text}
+                  </Text>
+                  {voice.notice.canOpenSettings ? (
+                    <Pressable
+                      onPress={voice.openSettings}
+                      accessibilityRole="link"
+                    >
+                      <Text
+                        style={{
+                          color: C.info,
+                          marginTop: 4,
+                          fontWeight: "700",
+                        }}
+                      >
+                        Open app settings ›
+                      </Text>
+                    </Pressable>
+                  ) : null}
+                </View>
+                <Pressable
+                  onPress={voice.clearNotice}
+                  accessibilityLabel="Dismiss"
+                  hitSlop={10}
+                >
+                  <Text style={{ color: C.warn, fontSize: 16 }}>✕</Text>
+                </Pressable>
               </View>
-            }
-            renderItem={({ item }) => <Bubble m={item} onRetry={send} busy={sending} />}
-            ListFooterComponent={
-              <View style={{ gap: 10, marginTop: 8 }}>
+            ) : null}
+
+            {listening ? (
+              <View
+                style={styles.recording}
+                accessibilityLiveRegion="assertive"
+              >
+                <View
+                  style={{
+                    width: 10,
+                    height: 10,
+                    borderRadius: 5,
+                    backgroundColor: C.danger,
+                  }}
+                />
+                <View style={{ flex: 1 }}>
+                  <Text
+                    style={{
+                      color: C.danger,
+                      fontWeight: "800",
+                      fontSize: 12,
+                      letterSpacing: 0.5,
+                    }}
+                  >
+                    {voice.state === "listening"
+                      ? "LISTENING · RELEASE TO STOP"
+                      : "FINISHING…"}
+                  </Text>
+                  <Text
+                    style={{ color: C.ink, fontSize: 14 }}
+                    numberOfLines={2}
+                  >
+                    {voice.interim || "Speak now…"}
+                  </Text>
+                </View>
+              </View>
+            ) : null}
+
+            <View style={styles.composer}>
+              <MicButton
+                listening={voice.state === "listening"}
+                available={voice.available}
+                disabled={sending}
+                onPressIn={voice.start}
+                onPressOut={voice.stop}
+              />
+              <TextInput
+                value={input}
+                onChangeText={setInput}
+                placeholder={
+                  voice.available
+                    ? "Hold 🎤 to talk, or type…"
+                    : "Type your request…"
+                }
+                placeholderTextColor={C.muted}
+                multiline
+                accessibilityLabel="Request text. Voice transcripts appear here for review before sending."
+                style={styles.input}
+              />
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Send"
+                onPress={() => send(input)}
+                disabled={!input.trim() || listening || sending}
+                style={({ pressed }) => [
+                  styles.send,
+                  {
+                    opacity: !input.trim() || listening || sending ? 0.4 : 1,
+                    transform: [{ scale: pressed ? 0.94 : 1 }],
+                  },
+                ]}
+              >
                 {sending ? (
-                  <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
-                    <ActivityIndicator color={C.accent} />
-                    <Text style={{ color: C.muted }}>Searching the sandbox catalogue…</Text>
-                  </View>
-                ) : null}
-                {st.proposal ? (
-                  <ProposalCard
-                    proposal={st.proposal}
-                    confirmInFlight={st.confirmInFlight === st.proposal.id}
-                    confirming={confirming}
-                    cancelling={cancelling}
-                    onConfirm={confirm}
-                    onCancel={cancel}
-                  />
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <Text
+                    style={{ color: "#fff", fontSize: 20, fontWeight: "800" }}
+                  >
+                    ➤
+                  </Text>
+                )}
+              </Pressable>
+            </View>
+          </View>
+        )}
+
+        {tab === "history" && (
+          <FlatList
+            contentContainerStyle={{ padding: 14, gap: 12 }}
+            data={st.orders}
+            keyExtractor={(o) => o.id}
+            refreshing={loadingList}
+            onRefresh={loadOrders}
+            ListHeaderComponent={
+              <View style={{ gap: 10 }}>
+                <Text style={styles.pageTitle}>Your sandbox orders</Text>
+                {listError ? (
+                  <Text style={{ color: C.warn }}>{listError}</Text>
                 ) : null}
                 <StatusChips statuses={st.statuses} />
               </View>
             }
+            ListEmptyComponent={
+              <Empty
+                icon="🧾"
+                title="No orders yet"
+                text="Confirmed sandbox orders will appear here and stay after you close the app."
+              />
+            }
+            renderItem={({ item }) => (
+              <OrderRow
+                o={item}
+                onDirections={() => directionsForOrder(item)}
+              />
+            )}
           />
+        )}
 
-          {voice.notice ? (
-            <View style={{ marginHorizontal: 12, marginBottom: 6, padding: 10, borderRadius: 10, backgroundColor: C.warnSoft }}>
-              <Text style={{ color: C.warn }}>{voice.notice.text}</Text>
-              {voice.notice.canOpenSettings ? (
-                <Pressable onPress={voice.openSettings} accessibilityRole="link">
-                  <Text style={{ color: C.info, marginTop: 4, fontWeight: '600' }}>Open app settings</Text>
-                </Pressable>
+        {tab === "activity" && (
+          <FlatList
+            contentContainerStyle={{ padding: 14, gap: 12 }}
+            data={runs}
+            keyExtractor={(r) => r.id}
+            refreshing={loadingList}
+            onRefresh={loadRuns}
+            ListHeaderComponent={
+              <View style={{ gap: 4 }}>
+                <Text style={styles.pageTitle}>Activity</Text>
+                <Text style={{ color: C.muted, fontSize: 13 }}>
+                  What the assistant actually did: tools called, validated
+                  inputs, outcomes and timing.
+                  {listError ? `\n${listError}` : ""}
+                </Text>
+              </View>
+            }
+            ListEmptyComponent={
+              <Empty
+                icon="📊"
+                title="No activity yet"
+                text="Ask the assistant something and each step will show up here."
+              />
+            }
+            renderItem={({ item }) => (
+              <RunCard
+                r={item}
+                onShare={() =>
+                  Share.share({
+                    title: `Run ${item.id}`,
+                    message: JSON.stringify(item, null, 2),
+                  })
+                }
+              />
+            )}
+          />
+        )}
+
+        {tab === "settings" && (
+          <ScrollView
+            contentContainerStyle={{ padding: 14, gap: 14 }}
+            keyboardShouldPersistTaps="handled"
+          >
+            <Text style={styles.pageTitle}>Settings</Text>
+
+            <View style={styles.settingsCard}>
+              <Text style={styles.settingsTitle}>🔌 Backend server</Text>
+              <TextInput
+                value={urlDraft}
+                onChangeText={setUrlDraft}
+                autoCapitalize="none"
+                autoCorrect={false}
+                keyboardType="url"
+                style={styles.urlInput}
+              />
+              <Text style={{ color: C.muted, fontSize: 12, lineHeight: 18 }}>
+                Emulator: http://10.0.2.2:8787{"\n"}Phone on same Wi-Fi:
+                http://YOUR-PC-IP:8787{"\n"}Build default: {DEFAULT_API_URL}
+              </Text>
+              <Button
+                icon="⚡"
+                label="Save and test connection"
+                onPress={async () => {
+                  const url = urlDraft.trim().replace(/\/+$/, "");
+                  update((x) => ({ ...x, apiUrl: url }));
+                  setHealth("Testing…");
+                  const r = await api.health(url);
+                  setOnline(r.ok);
+                  setHealth(
+                    r.ok
+                      ? `✅ Connected · model: ${r.data.llm_configured ? r.data.model : "NOT CONFIGURED on server"}`
+                      : `❌ ${r.message}`,
+                  );
+                }}
+              />
+              {health ? (
+                <Text style={{ color: C.ink, fontSize: 14 }}>{health}</Text>
               ) : null}
             </View>
-          ) : null}
 
-          {voice.state !== 'idle' ? (
-            <View style={{ marginHorizontal: 12, marginBottom: 6, padding: 10, borderRadius: 10, backgroundColor: C.dangerSoft, flexDirection: 'row', gap: 8, alignItems: 'center' }} accessibilityLiveRegion="assertive">
-              <View style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: C.danger }} />
-              <Text style={{ color: C.danger, fontWeight: '700' }}>{voice.state === 'listening' ? 'Listening… release to stop' : 'Finishing…'}</Text>
-              <Text style={{ color: C.ink, flex: 1 }} numberOfLines={2}>
-                {voice.interim}
+            <View style={styles.settingsCard}>
+              <Text style={styles.settingsTitle}>🗣️ Voice language</Text>
+              <View style={{ flexDirection: "row", gap: 8 }}>
+                {(["en-IN", "ta-IN"] as const).map((l) => (
+                  <View key={l} style={{ flex: 1 }}>
+                    <Button
+                      kind={st.language === l ? "primary" : "secondary"}
+                      label={l === "en-IN" ? "English" : "தமிழ்"}
+                      onPress={() => update((x) => ({ ...x, language: l }))}
+                    />
+                  </View>
+                ))}
+              </View>
+              <Text style={{ color: C.muted, fontSize: 12 }}>
+                Tamil is optional and needs the Tamil speech pack on the phone.
               </Text>
             </View>
-          ) : null}
 
-          <View style={{ flexDirection: 'row', gap: 8, padding: 12, paddingBottom: 20, backgroundColor: C.card, borderTopWidth: 1, borderTopColor: C.line, alignItems: 'flex-end' }}>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={voice.state === 'listening' ? 'Recording. Release to stop' : 'Hold to talk'}
-              onPressIn={voice.start}
-              onPressOut={voice.stop}
-              disabled={sending}
-              style={{
-                width: 52,
-                height: 52,
-                borderRadius: 26,
-                alignItems: 'center',
-                justifyContent: 'center',
-                backgroundColor: voice.state === 'listening' ? C.danger : voice.available ? C.accentSoft : C.line,
-              }}
-            >
-              <Text style={{ fontSize: 22 }}>{voice.state === 'listening' ? '●' : '🎤'}</Text>
-            </Pressable>
-            <TextInput
-              value={input}
-              onChangeText={setInput}
-              placeholder={voice.available ? 'Type, or hold 🎤 to talk' : 'Type your request'}
-              placeholderTextColor={C.muted}
-              multiline
-              accessibilityLabel="Request text. Voice transcripts appear here for review before sending."
-              style={{ flex: 1, minHeight: 52, maxHeight: 120, borderWidth: 1, borderColor: C.line, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, fontSize: 16, color: C.ink, backgroundColor: C.bg }}
-            />
-            <View style={{ width: 76 }}>
-              <Button label="Send" onPress={() => send(input)} disabled={!input.trim() || voice.state !== 'idle'} busy={sending} />
+            <View style={styles.settingsCard}>
+              <Text style={styles.settingsTitle}>💬 Conversation</Text>
+              <Button
+                kind="secondary"
+                icon="✨"
+                label="Start a new conversation"
+                onPress={() => {
+                  update((x) => ({
+                    ...x,
+                    sessionId: null,
+                    messages: [],
+                    proposal: null,
+                    confirmInFlight: null,
+                    statuses: [],
+                  }));
+                  setTab("assistant");
+                }}
+              />
             </View>
-          </View>
-        </View>
-      )}
 
-      {tab === 'history' && (
-        <FlatList
-          contentContainerStyle={{ padding: 12, gap: 10 }}
-          data={st.orders}
-          keyExtractor={(o) => o.id}
-          refreshing={loadingList}
-          onRefresh={loadOrders}
-          ListHeaderComponent={
-            <View style={{ gap: 8 }}>
-              {listError ? <Text style={{ color: C.warn }}>{listError}</Text> : null}
-              <StatusChips statuses={st.statuses} />
-            </View>
-          }
-          ListEmptyComponent={<Text style={{ color: C.muted, padding: 8 }}>No saved sandbox orders yet.</Text>}
-          renderItem={({ item }) => <OrderRow o={item} onDirections={() => directionsForOrder(item)} />}
-        />
-      )}
-
-      {tab === 'activity' && (
-        <FlatList
-          contentContainerStyle={{ padding: 12, gap: 10 }}
-          data={runs}
-          keyExtractor={(r) => r.id}
-          refreshing={loadingList}
-          onRefresh={loadRuns}
-          ListHeaderComponent={
-            <Text style={{ color: C.muted, fontSize: 13 }}>
-              Observable actions only: tools called, validated inputs, outcomes and timing. {listError ? `\n${listError}` : ''}
+            <Text style={{ color: C.muted, fontSize: 11, textAlign: "center" }}>
+              Sandbox demo · fictional restaurants · no real orders or payments
+              {"\n"}Device id: {st.deviceId}
             </Text>
-          }
-          ListEmptyComponent={<Text style={{ color: C.muted, padding: 8 }}>No activity yet.</Text>}
-          renderItem={({ item }) => <RunCard r={item} onShare={() => Share.share({ title: `Run ${item.id}`, message: JSON.stringify(item, null, 2) })} />}
-        />
-      )}
+          </ScrollView>
+        )}
+      </KeyboardAvoidingView>
 
-      {tab === 'settings' && (
-        <ScrollView contentContainerStyle={{ padding: 16, gap: 12 }}>
-          <Text style={{ fontWeight: '700', color: C.ink }}>Backend URL</Text>
-          <TextInput
-            value={urlDraft}
-            onChangeText={setUrlDraft}
-            autoCapitalize="none"
-            autoCorrect={false}
-            keyboardType="url"
-            style={{ borderWidth: 1, borderColor: C.line, borderRadius: 10, padding: 12, fontSize: 15, backgroundColor: C.card, color: C.ink }}
-          />
-          <Text style={{ color: C.muted, fontSize: 12 }}>
-            Emulator: http://10.0.2.2:8787 · Phone on same Wi-Fi: http://YOUR-PC-LAN-IP:8787 · Build default: {DEFAULT_API_URL}
-          </Text>
-          <Button
-            label="Save and test connection"
-            onPress={async () => {
-              const url = urlDraft.trim().replace(/\/+$/, '');
-              update((x) => ({ ...x, apiUrl: url }));
-              setHealth('Testing…');
-              const r = await api.health(url);
-              setHealth(r.ok ? `Connected. Model: ${r.data.llm_configured ? r.data.model : 'NOT CONFIGURED on server'}` : r.message);
-            }}
-          />
-          {health ? <Text style={{ color: C.ink }}>{health}</Text> : null}
-
-          <Text style={{ fontWeight: '700', color: C.ink, marginTop: 12 }}>Voice language</Text>
-          <View style={{ flexDirection: 'row', gap: 8 }}>
-            {(['en-IN', 'ta-IN'] as const).map((l) => (
-              <View key={l} style={{ flex: 1 }}>
-                <Button kind={st.language === l ? 'primary' : 'secondary'} label={l === 'en-IN' ? 'English' : 'தமிழ் (optional)'} onPress={() => update((x) => ({ ...x, language: l }))} />
-              </View>
-            ))}
-          </View>
-
-          <Text style={{ fontWeight: '700', color: C.ink, marginTop: 12 }}>Conversation</Text>
-          <Button
-            kind="secondary"
-            label="Start a new conversation"
-            onPress={() => update((x) => ({ ...x, sessionId: null, messages: [], proposal: null, confirmInFlight: null, statuses: [] }))}
-          />
-          <Text style={{ color: C.muted, fontSize: 12, marginTop: 12 }}>Device id (sent with requests; no account or personal data): {st.deviceId}</Text>
-        </ScrollView>
-      )}
-    </KeyboardAvoidingView>
+      <TabBar
+        tab={tab}
+        onChange={setTab}
+        badge={st.orders.length || undefined}
+      />
+    </View>
   );
 }
+
+function Empty({
+  icon,
+  title,
+  text,
+}: {
+  icon: string;
+  title: string;
+  text: string;
+}) {
+  return (
+    <View style={{ alignItems: "center", padding: 32, gap: 6 }}>
+      <Text style={{ fontSize: 40 }}>{icon}</Text>
+      <Text style={{ fontSize: 17, fontWeight: "700", color: C.ink }}>
+        {title}
+      </Text>
+      <Text
+        style={{
+          fontSize: 14,
+          color: C.muted,
+          textAlign: "center",
+          lineHeight: 20,
+        }}
+      >
+        {text}
+      </Text>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  notice: {
+    flexDirection: "row",
+    gap: 10,
+    alignItems: "flex-start",
+    marginHorizontal: 14,
+    marginBottom: 8,
+    padding: 12,
+    borderRadius: 14,
+    backgroundColor: C.warnSoft,
+  },
+  recording: {
+    flexDirection: "row",
+    gap: 10,
+    alignItems: "center",
+    marginHorizontal: 14,
+    marginBottom: 8,
+    padding: 12,
+    borderRadius: 14,
+    backgroundColor: C.dangerSoft,
+    borderWidth: 1,
+    borderColor: "#F3C5C0",
+  },
+  composer: {
+    flexDirection: "row",
+    gap: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    backgroundColor: C.card,
+    borderTopWidth: 1,
+    borderTopColor: C.line,
+    alignItems: "flex-end",
+  },
+  input: {
+    flex: 1,
+    minHeight: 50,
+    maxHeight: 120,
+    borderRadius: 25,
+    paddingHorizontal: 16,
+    paddingTop: 14,
+    paddingBottom: 12,
+    fontSize: 15,
+    color: C.ink,
+    backgroundColor: C.bg,
+    borderWidth: 1,
+    borderColor: C.line,
+  },
+  send: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: C.brand,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 3,
+  },
+  pageTitle: { fontSize: 22, fontWeight: "800", color: C.ink, marginBottom: 2 },
+  settingsCard: {
+    backgroundColor: C.card,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: C.line,
+    padding: 16,
+    gap: 10,
+  },
+  settingsTitle: { fontSize: 15, fontWeight: "800", color: C.ink },
+  urlInput: {
+    borderWidth: 1,
+    borderColor: C.line,
+    borderRadius: 12,
+    padding: 12,
+    fontSize: 15,
+    backgroundColor: C.bg,
+    color: C.ink,
+  },
+});
