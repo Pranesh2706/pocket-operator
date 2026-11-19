@@ -116,6 +116,36 @@ export default function App() {
   const [health, setHealth] = useState<string | null>(null);
   const [online, setOnline] = useState<boolean | null>(null);
   const [devOpen, setDevOpen] = useState(false);
+  // 7-tap unlock for Developer options.
+  const APP_VERSION = "1.0.0";
+  const [tapHint, setTapHint] = useState<string | null>(null);
+  const taps = useRef(0);
+  const tapTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const onVersionTap = () => {
+    const s = stRef.current;
+    if (!s) return;
+    if (s.devUnlocked) {
+      setTapHint("Developer options are already enabled.");
+      return;
+    }
+    taps.current += 1;
+    if (tapTimer.current) clearTimeout(tapTimer.current);
+    tapTimer.current = setTimeout(() => {
+      taps.current = 0;
+      setTapHint(null);
+    }, 1500);
+    const left = 7 - taps.current;
+    if (left <= 0) {
+      taps.current = 0;
+      update((x) => ({ ...x, devUnlocked: true }));
+      setDevOpen(true);
+      setTapHint("Developer options enabled.");
+    } else if (left <= 4) {
+      setTapHint(
+        `You are ${left} tap${left > 1 ? "s" : ""} away from developer options.`,
+      );
+    }
+  };
   const confirmLock = useRef(false);
   const chatRef = useRef<FlatList<ChatMessage>>(null);
 
@@ -752,104 +782,134 @@ export default function App() {
                 />
               </View>
 
-              <View style={styles.settingsCard}>
-                <Pressable
-                  onPress={() => setDevOpen((o) => !o)}
-                  accessibilityRole="button"
-                  accessibilityState={{ expanded: devOpen }}
-                  style={{
-                    flexDirection: "row",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                  }}
-                >
-                  <SettingsTitle
-                    icon="code-slash-outline"
-                    text="Developer options"
-                  />
-                  <Icon
-                    name={devOpen ? "chevron-up" : "chevron-down"}
-                    size={18}
-                    color={C.muted}
-                  />
-                </Pressable>
-                <T style={{ color: C.muted, fontSize: 12 }}>
-                  {st.apiUrlCustom
-                    ? "Using a custom server"
-                    : "Using the built-in server"}{" "}
-                  ·{" "}
-                  {online
-                    ? "connected"
-                    : online === false
-                      ? "offline"
-                      : "checking…"}
-                </T>
-                {devOpen ? (
-                  <View style={{ gap: 10, marginTop: 4 }}>
-                    <T style={{ fontSize: 13, fontWeight: "700" }}>
-                      Backend URL
-                    </T>
-                    <Input
-                      value={urlDraft}
-                      onChangeText={setUrlDraft}
-                      autoCapitalize="none"
-                      autoCorrect={false}
-                      keyboardType="url"
-                      style={styles.urlInput}
+              {st.devUnlocked || st.apiUrlCustom ? (
+                <View style={styles.settingsCard}>
+                  <Pressable
+                    onPress={() => setDevOpen((o) => !o)}
+                    accessibilityRole="button"
+                    accessibilityState={{ expanded: devOpen }}
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                    }}
+                  >
+                    <SettingsTitle
+                      icon="code-slash-outline"
+                      text="Developer options"
                     />
-                    <T style={{ color: C.muted, fontSize: 12, lineHeight: 18 }}>
-                      Only needed to point the app at your own local backend.
-                      {"\n"}Emulator: http://10.0.2.2:8787 · Same Wi-Fi:
-                      http://YOUR-PC-IP:8787{"\n"}Built-in: {DEFAULT_API_URL}
-                    </T>
-                    <Button
-                      icon="flash"
-                      label="Save and test"
-                      onPress={async () => {
-                        const url = urlDraft.trim().replace(/\/+$/, "");
-                        update((x) => ({
-                          ...x,
-                          apiUrl: url,
-                          apiUrlCustom: url !== DEFAULT_API_URL,
-                        }));
-                        setHealth("Testing…");
-                        const r = await api.health(url);
-                        setOnline(r.ok);
-                        setHealth(
-                          r.ok
-                            ? `Connected · model: ${r.data.llm_configured ? r.data.model : "NOT CONFIGURED on server"}`
-                            : `Not connected: ${r.message}`,
-                        );
-                      }}
+                    <Icon
+                      name={devOpen ? "chevron-up" : "chevron-down"}
+                      size={18}
+                      color={C.muted}
                     />
-                    {st.apiUrlCustom ? (
+                  </Pressable>
+                  <T style={{ color: C.muted, fontSize: 12 }}>
+                    {st.apiUrlCustom
+                      ? "Using a custom server"
+                      : "Using the built-in server"}{" "}
+                    ·{" "}
+                    {online
+                      ? "connected"
+                      : online === false
+                        ? "offline"
+                        : "checking…"}
+                  </T>
+                  {devOpen ? (
+                    <View style={{ gap: 10, marginTop: 4 }}>
+                      <T style={{ fontSize: 13, fontWeight: "700" }}>
+                        Backend URL
+                      </T>
+                      <Input
+                        value={urlDraft}
+                        onChangeText={setUrlDraft}
+                        autoCapitalize="none"
+                        autoCorrect={false}
+                        keyboardType="url"
+                        style={styles.urlInput}
+                      />
+                      <T
+                        style={{ color: C.muted, fontSize: 12, lineHeight: 18 }}
+                      >
+                        Only needed to point the app at your own local backend.
+                        {"\n"}Emulator: http://10.0.2.2:8787 · Same Wi-Fi:
+                        http://YOUR-PC-IP:8787{"\n"}Built-in: {DEFAULT_API_URL}
+                      </T>
                       <Button
-                        kind="secondary"
-                        icon="refresh"
-                        label="Use built-in server"
+                        icon="flash"
+                        label="Save and test"
                         onPress={async () => {
+                          const url = urlDraft.trim().replace(/\/+$/, "");
                           update((x) => ({
                             ...x,
-                            apiUrl: DEFAULT_API_URL,
-                            apiUrlCustom: false,
+                            apiUrl: url,
+                            apiUrlCustom: url !== DEFAULT_API_URL,
                           }));
-                          setUrlDraft(DEFAULT_API_URL);
-                          const r = await api.health(DEFAULT_API_URL);
+                          setHealth("Testing…");
+                          const r = await api.health(url);
                           setOnline(r.ok);
                           setHealth(
                             r.ok
-                              ? "Connected to the built-in server"
+                              ? `Connected · model: ${r.data.llm_configured ? r.data.model : "NOT CONFIGURED on server"}`
                               : `Not connected: ${r.message}`,
                           );
                         }}
                       />
-                    ) : null}
-                    {health ? (
-                      <T style={{ color: C.ink, fontSize: 14 }}>{health}</T>
-                    ) : null}
-                  </View>
+                      {st.apiUrlCustom ? (
+                        <Button
+                          kind="secondary"
+                          icon="refresh"
+                          label="Use built-in server"
+                          onPress={async () => {
+                            update((x) => ({
+                              ...x,
+                              apiUrl: DEFAULT_API_URL,
+                              apiUrlCustom: false,
+                            }));
+                            setUrlDraft(DEFAULT_API_URL);
+                            const r = await api.health(DEFAULT_API_URL);
+                            setOnline(r.ok);
+                            setHealth(
+                              r.ok
+                                ? "Connected to the built-in server"
+                                : `Not connected: ${r.message}`,
+                            );
+                          }}
+                        />
+                      ) : null}
+                      {health ? (
+                        <T style={{ color: C.ink, fontSize: 14 }}>{health}</T>
+                      ) : null}
+                      <Button
+                        kind="ghost"
+                        icon="eye-off-outline"
+                        label="Hide developer options"
+                        onPress={() => {
+                          update((x) => ({ ...x, devUnlocked: false }));
+                          setDevOpen(false);
+                          setTapHint(null);
+                        }}
+                      />
+                    </View>
+                  ) : null}
+                </View>
+              ) : null}
+
+              <Pressable
+                onPress={onVersionTap}
+                accessibilityRole="button"
+                accessibilityLabel={`Version ${APP_VERSION}`}
+                style={{ alignItems: "center", paddingVertical: 6 }}
+              >
+                <T style={{ color: C.muted, fontSize: 13, fontWeight: "600" }}>
+                  Version {APP_VERSION}
+                </T>
+                {tapHint ? (
+                  <T style={{ color: C.brand, fontSize: 12, marginTop: 4 }}>
+                    {tapHint}
+                  </T>
                 ) : null}
-              </View>
+              </Pressable>
 
               <T style={{ color: C.muted, fontSize: 11, textAlign: "center" }}>
                 Sandbox demo · fictional restaurants · no real orders or

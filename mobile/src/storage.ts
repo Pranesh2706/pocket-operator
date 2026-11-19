@@ -14,6 +14,8 @@ export type PersistedState = {
   apiUrl: string;
   /** True only when someone typed a URL in Developer options; otherwise the built-in server is used. */
   apiUrlCustom: boolean;
+  /** Hidden until the version label is tapped 7 times (like Android's own Developer options). */
+  devUnlocked: boolean;
   sessionId: string | null;
   language: "en-IN" | "ta-IN";
   messages: ChatMessage[];
@@ -34,6 +36,7 @@ export function initialState(): PersistedState {
     deviceId: newDeviceId(),
     apiUrl: DEFAULT_API_URL,
     apiUrlCustom: false,
+    devUnlocked: false,
     sessionId: null,
     language: "en-IN",
     messages: [],

@@ -4,6 +4,7 @@ import {
   ActivityIndicator,
   Animated,
   Easing,
+  Image,
   PanResponder,
   Pressable,
   StyleSheet,
@@ -214,13 +215,11 @@ export function Header({
         }}
       >
         <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-          <View style={s.logo}>
-            <MaterialCommunityIcons
-              name="food-takeout-box"
-              size={24}
-              color={C.headerInk}
-            />
-          </View>
+          <Image
+            source={require("../assets/logo.png")}
+            style={s.logoImg}
+            accessibilityLabel="Pocket Operator logo"
+          />
           <View>
             <T style={s.title}>Pocket Operator</T>
             <View
@@ -1298,6 +1297,13 @@ export const s = StyleSheet.create({
     paddingBottom: 16,
     borderBottomLeftRadius: 22,
     borderBottomRightRadius: 22,
+  },
+  logoImg: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    borderWidth: 2,
+    borderColor: "rgba(255,255,255,0.35)",
   },
   logo: {
     width: 42,
