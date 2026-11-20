@@ -10,7 +10,7 @@
         "buildType": "apk"
       },
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://trickle-gloomy-gestate.ngrok-free.dev"
+        "EXPO_PUBLIC_API_URL": "https://pocket-operator-production.up.railway.app"
       }
     },
     "development": {
